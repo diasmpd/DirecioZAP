@@ -17,3 +17,36 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+
+  - type: web
+    name: evolution-direciozap
+    env: docker
+    dockerfilePath: ./Dockerfile.evolution
+    port: 8080
+    envVars:
+      - key: SERVER_URL
+        sync: false
+      - key: AUTHENTICATION_API_KEY
+        sync: false
+      - key: AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES
+        value: "true"
+      - key: DEL_INSTANCE
+        value: "false"
+      - key: LANGUAGE
+        value: pt-BR
+      - key: DATABASE_PROVIDER
+        value: postgresql
+      - key: DATABASE_CONNECTION_URI
+        sync: false
+      - key: DATABASE_CONNECTION_CLIENT_NAME
+        value: direciozap
+      - key: CACHE_REDIS_ENABLED
+        value: "false"
+      - key: CACHE_LOCAL_ENABLED
+        value: "true"
+      - key: LOG_BAILEYS
+        value: debug
+      - key: CONFIG_SESSION_PHONE_CLIENT
+        value: Chrome
+      - key: CONFIG_SESSION_PHONE_NAME
+        value: Chrome

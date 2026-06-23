@@ -1,0 +1,7 @@
+FROM atendai/evolution-api:latest
+
+# Apply Baileys protocol patches for WhatsApp 2026 compatibility
+COPY patch_baileys.js /tmp/patch_baileys.js
+RUN node /tmp/patch_baileys.js
+
+EXPOSE 8080
