@@ -9,10 +9,14 @@
 
 | Componente | Onde roda | Custo |
 |---|---|---|
-| Backend Python (FastAPI) | Render Free | Gratuito |
-| Evolution API | VPS própria ou Railway | Gratuito (Oracle Free) ou ~$5/mês |
-| Supabase (sessões) | Supabase Cloud | Gratuito |
+| Backend Python (FastAPI) | Render Free (`direciozap-bot`) | Gratuito |
+| Evolution API | Render Free Docker (`evolution-direciozap`) | Gratuito |
+| PostgreSQL (sessão WA) | Render Free (`evolution-db`, expira 23/07/2026) | Gratuito |
+| Supabase (sessões bot) | Supabase Cloud | Gratuito |
 | Excel | Disco efêmero Render | Gratuito (exportar antes de redeploy) |
+
+> **Importante:** a Evolution API usa `Dockerfile.evolution` (raiz do repo) com patch Baileys
+> para compatibilidade com o protocolo WhatsApp 2026. Ver `patch_baileys.js`.
 
 ---
 
