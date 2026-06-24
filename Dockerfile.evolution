@@ -1,6 +1,6 @@
 FROM atendai/evolution-api:latest
 
-# Apply Baileys protocol patches for WhatsApp 2026 compatibility
+# Patch Baileys for WhatsApp 2026: only fix DICT_VERSION, remove broken use_new_auth_key ACK
 COPY patch_baileys.js /tmp/patch_baileys.js
 RUN node /tmp/patch_baileys.js
 
