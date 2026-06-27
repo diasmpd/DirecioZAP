@@ -9,13 +9,19 @@ from config import settings
 
 _lock = threading.Lock()
 
-CABECALHO = ["Razão Social", "CNPJ", "Contato", "Serviço", "Estados", "Data Cadastro"]
 
-
-def append_fornecedor(dados: dict) -> None:
+def append_fornecedor(phone: str, dados: dict, perguntas: list[dict]) -> None:
     with _lock:
         path = settings.EXCEL_PATH
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
+        labels = [p.get("label") or p["campo"] for p in perguntas]
+        cabecalho = ["Telefone"] + labels + ["Data Cadastro"]
+        row = (
+            [phone]
+            + [dados.get(p["campo"], "") for p in perguntas]
+            + [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+        )
 
         if os.path.exists(path):
             wb = openpyxl.load_workbook(path)
@@ -23,16 +29,7 @@ def append_fornecedor(dados: dict) -> None:
         else:
             wb = Workbook()
             ws = wb.active
-            ws.append(CABECALHO)
+            ws.append(cabecalho)
 
-        ws.append(
-            [
-                dados.get("razao_social", ""),
-                dados.get("cnpj", ""),
-                dados.get("contato", ""),
-                dados.get("servico", ""),
-                dados.get("estados", ""),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ]
-        )
+        ws.append(row)
         wb.save(path)

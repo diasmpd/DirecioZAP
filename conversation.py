@@ -4,62 +4,53 @@ from excel_writer import append_fornecedor
 from supabase_session import (
     create_session,
     delete_session,
+    get_perguntas,
     get_session,
+    save_cadastro,
     update_session,
 )
-from validators import (
-    normalizar_cnpj,
-    normalizar_contato,
-    normalizar_estados,
-    normalizar_razao_social,
-    normalizar_servico,
-)
+from validators import normalizar_cnpj, normalizar_contato, normalizar_estados
 
 MAX_TENTATIVAS = 3
 
 MSGS = {
-    "SAUDACAO": (
-        "Olá! 👋 Seja bem-vindo ao cadastro de fornecedores. "
-        "Vou precisar de algumas informações. "
-        "Qual é a Razão Social da sua empresa?"
-    ),
-    "AGUARDA_CNPJ": "Obrigado! Agora me informe o CNPJ da empresa (pode ser com ou sem pontuação):",
-    "CNPJ_INVALIDO": "⚠️ CNPJ inválido. Por favor, informe um CNPJ com 14 dígitos válidos:",
-    "AGUARDA_CONTATO": "Ótimo! Qual o contato principal? (telefone ou e-mail):",
-    "CONTATO_INVALIDO": (
-        "⚠️ Formato não reconhecido. "
-        "Informe um telefone (ex: 31999990000) ou e-mail válido:"
-    ),
-    "AGUARDA_SERVICO": "Que tipo de serviço sua empresa oferece?",
-    "AGUARDA_ESTADOS": (
-        "Em quais estados vocês atuam? "
-        "(Ex: MG, SP, RJ — pode listar todos separados por vírgula):"
-    ),
-    "ESTADO_INVALIDO": (
-        "⚠️ Algumas siglas não reconhecidas. "
-        "Use as siglas oficiais dos estados brasileiros (ex: MG, SP, RJ):"
-    ),
+    "SAUDACAO": "Olá! 👋 Seja bem-vindo!",
     "SUCESSO": "✅ Cadastro realizado com sucesso! Entraremos em contato em breve. Obrigado!",
-    "REINICIO": "Ok, vamos começar de novo. Qual é a Razão Social da sua empresa?",
-    "ERRO_SALVAR": "⚠️ Ocorreu um problema técnico ao salvar seu cadastro. Por favor, tente novamente mais tarde.",
-    "MAX_TENTATIVAS": "❌ Muitas tentativas inválidas. Por favor, inicie uma nova conversa para tentar novamente.",
+    "REINICIO": "Ok, vamos recomeçar.",
+    "ERRO_SALVAR": "⚠️ Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
+    "MAX_TENTATIVAS": "❌ Muitas tentativas inválidas. Envie uma mensagem para recomeçar.",
     "APENAS_TEXTO": "Por favor, responda apenas com texto.",
-    "RAZAO_SOCIAL_INVALIDA": "Por favor, informe a Razão Social da sua empresa:",
-    "SERVICO_INVALIDO": "Por favor, informe o serviço oferecido (mínimo 3 caracteres):",
+    "SEM_CONFIG": "⚠️ Bot sem perguntas configuradas. Contate o administrador.",
     "CONFIRMACAO_INVALIDA": "Por favor, responda S para confirmar ou N para recomeçar.",
 }
 
 
-def _confirmar_resumo(dados: dict) -> str:
-    return (
-        "📋 Resumo do cadastro:\n\n"
-        f"• Razão Social: {dados.get('razao_social', '')}\n"
-        f"• CNPJ: {dados.get('cnpj', '')}\n"
-        f"• Contato: {dados.get('contato', '')}\n"
-        f"• Serviço: {dados.get('servico', '')}\n"
-        f"• Estados: {dados.get('estados', '')}\n\n"
-        "As informações estão corretas? Responda S para confirmar ou N para recomeçar."
-    )
+def _validar(text: str, tipo: str):
+    tipo = (tipo or "texto").lower()
+    if tipo == "cnpj":
+        return normalizar_cnpj(text)
+    if tipo == "email":
+        c = normalizar_contato(text)
+        return c if c and "@" in c else None
+    if tipo == "telefone":
+        c = normalizar_contato(text)
+        return c if c and "@" not in c else None
+    if tipo == "contato":
+        return normalizar_contato(text)
+    if tipo == "estados":
+        result = normalizar_estados(text)
+        return ", ".join(result) if result else None
+    # tipo "texto" — qualquer string não-vazia
+    return text.strip() if text.strip() else None
+
+
+def _gerar_resumo(dados: dict, perguntas: list[dict]) -> str:
+    linhas = ["📋 Resumo do cadastro:\n"]
+    for p in perguntas:
+        label = p.get("label") or p["campo"]
+        linhas.append(f"• {label}: {dados.get(p['campo'], '')}")
+    linhas.append("\nAs informações estão corretas? Responda S para confirmar ou N para recomeçar.")
+    return "\n".join(linhas)
 
 
 def _sessao_expirada(session: dict) -> bool:
@@ -73,117 +64,84 @@ def _sessao_expirada(session: dict) -> bool:
         return True
 
 
-def _incrementar_tentativa(tentativas: dict, campo: str) -> int:
-    tentativas[campo] = tentativas.get(campo, 0) + 1
-    return tentativas[campo]
-
-
 class ConversationManager:
 
     def process(self, phone: str, text: str) -> str:
-        session = get_session(phone)
+        perguntas = get_perguntas()
+        if not perguntas:
+            return MSGS["SEM_CONFIG"]
 
+        session = get_session(phone)
         if session is None or _sessao_expirada(session):
             if session:
                 delete_session(phone)
             session = create_session(phone)
 
-        state: str = session["state"]
-        dados: dict = dict(session.get("dados") or {})
-        tentativas: dict = dict(session.get("tentativas") or {})
+        state = session["state"]
+        dados = dict(session.get("dados") or {})
+        tentativas = dict(session.get("tentativas") or {})
 
-        return self._handle(phone, text, state, dados, tentativas)
+        return self._handle(phone, text, state, dados, tentativas, perguntas)
 
-    def _handle(
-        self,
-        phone: str,
-        text: str,
-        state: str,
-        dados: dict,
-        tentativas: dict,
-    ) -> str:
+    def _handle(self, phone, text, state, dados, tentativas, perguntas):
+        primeira = perguntas[0]
 
         if state == "SAUDACAO":
-            update_session(phone, "AGUARDA_RAZAO_SOCIAL", dados, tentativas)
-            return MSGS["SAUDACAO"]
+            update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
+            return f"{MSGS['SAUDACAO']}\n\n{primeira['pergunta']}"
 
-        if state == "AGUARDA_RAZAO_SOCIAL":
-            razao = normalizar_razao_social(text)
-            if not razao:
-                return MSGS["RAZAO_SOCIAL_INVALIDA"]
-            dados["razao_social"] = razao
-            update_session(phone, "AGUARDA_CNPJ", dados, tentativas)
-            return MSGS["AGUARDA_CNPJ"]
+        if state.startswith("AGUARDA_"):
+            campo = state[len("AGUARDA_"):]
+            pergunta_cfg = next((p for p in perguntas if p["campo"] == campo), None)
 
-        if state == "AGUARDA_CNPJ":
-            cnpj = normalizar_cnpj(text)
-            if not cnpj:
-                n = _incrementar_tentativa(tentativas, "cnpj")
+            if pergunta_cfg is None:
+                delete_session(phone)
+                create_session(phone)
+                update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
+                return f"{MSGS['SAUDACAO']}\n\n{primeira['pergunta']}"
+
+            valor = _validar(text, pergunta_cfg["tipo"])
+            if valor is None:
+                n = tentativas.get(campo, 0) + 1
+                tentativas[campo] = n
                 if n >= MAX_TENTATIVAS:
                     delete_session(phone)
                     return MSGS["MAX_TENTATIVAS"]
-                update_session(phone, "AGUARDA_CNPJ", dados, tentativas)
-                return MSGS["CNPJ_INVALIDO"]
-            tentativas.pop("cnpj", None)
-            dados["cnpj"] = cnpj
-            update_session(phone, "AGUARDA_CONTATO", dados, tentativas)
-            return MSGS["AGUARDA_CONTATO"]
+                update_session(phone, state, dados, tentativas)
+                return pergunta_cfg.get("msg_erro") or pergunta_cfg["pergunta"]
 
-        if state == "AGUARDA_CONTATO":
-            contato = normalizar_contato(text)
-            if not contato:
-                n = _incrementar_tentativa(tentativas, "contato")
-                if n >= MAX_TENTATIVAS:
-                    delete_session(phone)
-                    return MSGS["MAX_TENTATIVAS"]
-                update_session(phone, "AGUARDA_CONTATO", dados, tentativas)
-                return MSGS["CONTATO_INVALIDO"]
-            tentativas.pop("contato", None)
-            dados["contato"] = contato
-            update_session(phone, "AGUARDA_SERVICO", dados, tentativas)
-            return MSGS["AGUARDA_SERVICO"]
+            tentativas.pop(campo, None)
+            dados[campo] = valor
 
-        if state == "AGUARDA_SERVICO":
-            servico = normalizar_servico(text)
-            if not servico:
-                return MSGS["SERVICO_INVALIDO"]
-            dados["servico"] = servico
-            update_session(phone, "AGUARDA_ESTADOS", dados, tentativas)
-            return MSGS["AGUARDA_ESTADOS"]
+            idx = next(i for i, p in enumerate(perguntas) if p["campo"] == campo)
+            if idx + 1 < len(perguntas):
+                proxima = perguntas[idx + 1]
+                update_session(phone, f"AGUARDA_{proxima['campo']}", dados, tentativas)
+                return proxima["pergunta"]
 
-        if state == "AGUARDA_ESTADOS":
-            estados = normalizar_estados(text)
-            if estados is None:
-                n = _incrementar_tentativa(tentativas, "estados")
-                if n >= MAX_TENTATIVAS:
-                    delete_session(phone)
-                    return MSGS["MAX_TENTATIVAS"]
-                update_session(phone, "AGUARDA_ESTADOS", dados, tentativas)
-                return MSGS["ESTADO_INVALIDO"]
-            tentativas.pop("estados", None)
-            dados["estados"] = ", ".join(estados)
             update_session(phone, "CONFIRMACAO", dados, tentativas)
-            return _confirmar_resumo(dados)
+            return _gerar_resumo(dados, perguntas)
 
         if state == "CONFIRMACAO":
             resp = text.strip().upper()
             if resp in {"S", "SIM", "YES", "Y"}:
                 try:
-                    append_fornecedor(dados)
+                    save_cadastro(phone, dados)
+                    append_fornecedor(phone, dados, perguntas)
                     delete_session(phone)
                     return MSGS["SUCESSO"]
                 except Exception as exc:
-                    print(f"[conversation] Erro ao salvar Excel: {exc}")
+                    print(f"[conversation] Erro ao salvar: {exc}")
                     return MSGS["ERRO_SALVAR"]
             if resp in {"N", "NAO", "NÃO", "NO"}:
                 delete_session(phone)
                 create_session(phone)
-                update_session(phone, "AGUARDA_RAZAO_SOCIAL", {}, {})
-                return MSGS["REINICIO"]
-            return f"{MSGS['CONFIRMACAO_INVALIDA']}\n\n{_confirmar_resumo(dados)}"
+                update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
+                return f"{MSGS['REINICIO']}\n\n{primeira['pergunta']}"
+            return f"{MSGS['CONFIRMACAO_INVALIDA']}\n\n{_gerar_resumo(dados, perguntas)}"
 
-        # Fallback — estado desconhecido: reinicia sessão
+        # fallback — estado desconhecido
         delete_session(phone)
         create_session(phone)
-        update_session(phone, "AGUARDA_RAZAO_SOCIAL", {}, {})
-        return MSGS["SAUDACAO"]
+        update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
+        return f"{MSGS['SAUDACAO']}\n\n{primeira['pergunta']}"

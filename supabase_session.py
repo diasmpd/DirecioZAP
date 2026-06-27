@@ -12,6 +12,8 @@ def _get_client() -> Client:
     return _client
 
 
+# ── Sessões ────────────────────────────────────────────────────
+
 def get_session(phone: str) -> dict | None:
     result = _get_client().table("sessions").select("*").eq("phone", phone).execute()
     return result.data[0] if result.data else None
@@ -45,3 +47,25 @@ def update_session(phone: str, state: str, dados: dict, tentativas: dict) -> Non
 
 def delete_session(phone: str) -> None:
     _get_client().table("sessions").delete().eq("phone", phone).execute()
+
+
+# ── Configuração de perguntas ──────────────────────────────────
+
+def get_perguntas() -> list[dict]:
+    result = (
+        _get_client()
+        .table("perguntas")
+        .select("*")
+        .eq("ativo", True)
+        .order("ordem")
+        .execute()
+    )
+    return result.data
+
+
+# ── Cadastros concluídos ───────────────────────────────────────
+
+def save_cadastro(phone: str, dados: dict) -> None:
+    _get_client().table("cadastros").insert(
+        {"phone": phone, "dados": dados}
+    ).execute()
