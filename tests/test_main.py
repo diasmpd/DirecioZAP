@@ -1,17 +1,18 @@
 """
-Testes A/B — main.py (endpoints FastAPI + Meta WhatsApp Cloud API)
+Testes A/B — main.py (endpoints FastAPI + Twilio WhatsApp)
 A = requisições válidas processadas corretamente
 B = requisições inválidas / edge cases ignorados/rejeitados
 """
 import os
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from main import app
 
 PHONE = "5531999990000"
 TOKEN = os.environ["VERIFY_TOKEN"]
+SANDBOX_FROM = "whatsapp:+14155238886"
 
 
 @pytest.fixture
@@ -34,66 +35,25 @@ def mock_send(monkeypatch):
     return mock
 
 
-def _payload_texto(phone=PHONE, text="Olá"):
+def _form_texto(phone=PHONE, text="Olá"):
     return {
-        "object": "whatsapp_business_account",
-        "entry": [{
-            "id": "WABA_ID",
-            "changes": [{
-                "field": "messages",
-                "value": {
-                    "messaging_product": "whatsapp",
-                    "metadata": {"display_phone_number": "15556741075", "phone_number_id": "test_phone_number_id"},
-                    "contacts": [{"profile": {"name": "Test User"}, "wa_id": phone}],
-                    "messages": [{
-                        "from": phone,
-                        "id": "wamid.test123",
-                        "timestamp": "1234567890",
-                        "type": "text",
-                        "text": {"body": text},
-                    }],
-                },
-            }],
-        }],
+        "From": f"whatsapp:+{phone}",
+        "To": SANDBOX_FROM,
+        "Body": text,
+        "NumMedia": "0",
+        "MessageSid": "SMtest123",
     }
 
 
-def _payload_midia(phone=PHONE, tipo="audio"):
+def _form_midia(phone=PHONE, num_media=1):
     return {
-        "object": "whatsapp_business_account",
-        "entry": [{
-            "id": "WABA_ID",
-            "changes": [{
-                "field": "messages",
-                "value": {
-                    "messaging_product": "whatsapp",
-                    "metadata": {"display_phone_number": "15556741075", "phone_number_id": "test_phone_number_id"},
-                    "contacts": [{"profile": {"name": "Test User"}, "wa_id": phone}],
-                    "messages": [{
-                        "from": phone,
-                        "id": "wamid.test456",
-                        "timestamp": "1234567890",
-                        "type": tipo,
-                    }],
-                },
-            }],
-        }],
-    }
-
-
-def _payload_status():
-    return {
-        "object": "whatsapp_business_account",
-        "entry": [{
-            "id": "WABA_ID",
-            "changes": [{
-                "field": "messages",
-                "value": {
-                    "messaging_product": "whatsapp",
-                    "statuses": [{"id": "wamid.test", "status": "delivered"}],
-                },
-            }],
-        }],
+        "From": f"whatsapp:+{phone}",
+        "To": SANDBOX_FROM,
+        "Body": "",
+        "NumMedia": str(num_media),
+        "MessageSid": "SMtest456",
+        "MediaContentType0": "image/jpeg",
+        "MediaUrl0": "https://api.twilio.com/media/test.jpg",
     }
 
 
@@ -108,89 +68,55 @@ def test_A_health_check(client):
 
 
 # ─────────────────────────────────────────────────────────────
-#  A — VERIFICAÇÃO DE WEBHOOK (GET /webhook)
-# ─────────────────────────────────────────────────────────────
-
-class TestWebhookVerificacao:
-    def test_A_verifica_webhook_com_token_correto(self, client):
-        resp = client.get(
-            "/webhook",
-            params={"hub.mode": "subscribe", "hub.verify_token": TOKEN, "hub.challenge": "challenge_abc"},
-        )
-        assert resp.status_code == 200
-        assert resp.text == "challenge_abc"
-
-    def test_B_rejeita_token_errado(self, client):
-        resp = client.get(
-            "/webhook",
-            params={"hub.mode": "subscribe", "hub.verify_token": "token_errado", "hub.challenge": "challenge_abc"},
-        )
-        assert resp.status_code == 403
-
-    def test_B_rejeita_mode_errado(self, client):
-        resp = client.get(
-            "/webhook",
-            params={"hub.mode": "unsubscribe", "hub.verify_token": TOKEN, "hub.challenge": "challenge_abc"},
-        )
-        assert resp.status_code == 403
-
-
-# ─────────────────────────────────────────────────────────────
 #  A — WEBHOOK: MENSAGEM DE TEXTO
 # ─────────────────────────────────────────────────────────────
 
 class TestWebhookTexto:
     def test_A_processa_mensagem_de_texto(self, client, mock_manager, mock_send):
-        resp = client.post("/webhook", json=_payload_texto(text="Empresa Teste Ltda"))
+        resp = client.post("/webhook", data=_form_texto(text="Empresa Teste Ltda"))
         assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
         mock_manager.process.assert_called_once_with(PHONE, "Empresa Teste Ltda")
 
     def test_A_envia_resposta_ao_usuario(self, client, mock_manager, mock_send):
         mock_manager.process.return_value = "Qual o seu CNPJ?"
-        client.post("/webhook", json=_payload_texto())
+        client.post("/webhook", data=_form_texto())
         mock_send.assert_called_once_with(PHONE, "Qual o seu CNPJ?")
 
-    def test_A_extrai_numero_correto(self, client, mock_manager, mock_send):
-        client.post("/webhook", json=_payload_texto(phone="5511988887777"))
+    def test_A_extrai_numero_sem_plus(self, client, mock_manager, mock_send):
+        client.post("/webhook", data=_form_texto(phone="5511988887777"))
         mock_manager.process.assert_called_once_with("5511988887777", "Olá")
+
+    def test_A_strip_espacos_no_texto(self, client, mock_manager, mock_send):
+        client.post("/webhook", data=_form_texto(text="  Empresa Ltda  "))
+        mock_manager.process.assert_called_once_with(PHONE, "Empresa Ltda")
 
 
 # ─────────────────────────────────────────────────────────────
-#  B — WEBHOOK: CASOS IGNORADOS / SEM PROCESSAMENTO
+#  B — WEBHOOK: CASOS IGNORADOS / AVISO
 # ─────────────────────────────────────────────────────────────
 
 class TestWebhookIgnorados:
-    def test_B_ignora_objeto_diferente(self, client, mock_manager, mock_send):
-        resp = client.post("/webhook", json={"object": "instagram", "entry": []})
-        assert resp.json()["status"] == "ignored"
-        mock_manager.process.assert_not_called()
-
-    def test_B_status_update_nao_processa(self, client, mock_manager, mock_send):
-        resp = client.post("/webhook", json=_payload_status())
-        assert resp.status_code == 200
-        mock_manager.process.assert_not_called()
-        mock_send.assert_not_called()
-
-    def test_B_mensagem_audio_envia_aviso_texto(self, client, mock_manager, mock_send):
-        resp = client.post("/webhook", json=_payload_midia(tipo="audio"))
+    def test_B_mensagem_midia_envia_aviso_texto(self, client, mock_manager, mock_send):
+        resp = client.post("/webhook", data=_form_midia())
         assert resp.status_code == 200
         mock_send.assert_called_once()
         assert "texto" in mock_send.call_args[0][1].lower()
         mock_manager.process.assert_not_called()
 
-    def test_B_mensagem_imagem_envia_aviso_texto(self, client, mock_manager, mock_send):
-        resp = client.post("/webhook", json=_payload_midia(tipo="image"))
+    def test_B_body_vazio_sem_midia_ignorado(self, client, mock_manager, mock_send):
+        form = _form_texto(text="")
+        resp = client.post("/webhook", data=form)
         assert resp.status_code == 200
-        mock_send.assert_called_once()
+        mock_manager.process.assert_not_called()
+        mock_send.assert_not_called()
+
+    def test_B_sem_from_ignorado(self, client, mock_manager, mock_send):
+        resp = client.post("/webhook", data={"Body": "oi", "NumMedia": "0"})
+        assert resp.status_code == 200
         mock_manager.process.assert_not_called()
 
-    def test_B_campo_diferente_de_messages_ignorado(self, client, mock_manager, mock_send):
-        payload = {
-            "object": "whatsapp_business_account",
-            "entry": [{"id": "X", "changes": [{"field": "account_update", "value": {}}]}],
-        }
-        resp = client.post("/webhook", json=payload)
+    def test_B_num_media_maior_que_zero_bloqueia(self, client, mock_manager, mock_send):
+        resp = client.post("/webhook", data=_form_midia(num_media=2))
         assert resp.status_code == 200
         mock_manager.process.assert_not_called()
 

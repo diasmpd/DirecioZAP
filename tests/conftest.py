@@ -4,10 +4,11 @@ Fixtures compartilhadas entre todos os testes.
 import os
 import tempfile
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-os.environ.setdefault("META_TOKEN", "test_meta_token")
-os.environ.setdefault("META_PHONE_NUMBER_ID", "test_phone_number_id")
+os.environ.setdefault("TWILIO_ACCOUNT_SID", "ACtest000000000000000000000000000000")
+os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_auth_token")
+os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")
 os.environ.setdefault("VERIFY_TOKEN", "test_verify_token")
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test_supabase_key")

@@ -1,7 +1,7 @@
 import os
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 
 from config import settings
 from conversation import ConversationManager
@@ -16,50 +16,28 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/webhook")
-def webhook_verify(
-    hub_mode: str = Query(None, alias="hub.mode"),
-    hub_verify_token: str = Query(None, alias="hub.verify_token"),
-    hub_challenge: str = Query(None, alias="hub.challenge"),
-):
-    if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
-        return PlainTextResponse(content=hub_challenge)
-    raise HTTPException(status_code=403, detail="Verificação inválida")
-
-
 @app.post("/webhook")
 async def webhook(request: Request):
-    payload = await request.json()
+    form = await request.form()
 
-    if payload.get("object") != "whatsapp_business_account":
-        return {"status": "ignored"}
+    num_media = int(form.get("NumMedia", "0"))
+    phone = form.get("From", "").replace("whatsapp:", "").lstrip("+")
+    text = form.get("Body", "").strip()
 
-    for entry in payload.get("entry", []):
-        for change in entry.get("changes", []):
-            if change.get("field") != "messages":
-                continue
-            for message in change.get("value", {}).get("messages", []):
-                _handle_message(message)
-
-    return {"status": "ok"}
-
-
-def _handle_message(message: dict):
-    phone = message.get("from", "")
     if not phone:
-        return
+        return Response(status_code=200)
 
-    if message.get("type") == "text":
-        text = message.get("text", {}).get("body", "")
-    else:
+    if num_media > 0:
         send_message(phone, "Por favor, responda apenas com texto.")
-        return
+        return Response(status_code=200)
 
     if not text:
-        return
+        return Response(status_code=200)
 
     response = manager.process(phone, text)
     send_message(phone, response)
+
+    return Response(status_code=200)
 
 
 @app.get("/exportar")
