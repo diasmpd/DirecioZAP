@@ -2,9 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    EVOLUTION_API_URL: str
-    EVOLUTION_API_KEY: str
-    EVOLUTION_INSTANCE: str
+    META_TOKEN: str
+    META_PHONE_NUMBER_ID: str
     VERIFY_TOKEN: str
     SUPABASE_URL: str
     SUPABASE_KEY: str

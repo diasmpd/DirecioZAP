@@ -1,7 +1,7 @@
 import os
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from config import settings
 from conversation import ConversationManager
@@ -16,48 +16,50 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/webhook")
+def webhook_verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+):
+    if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
+        return PlainTextResponse(content=hub_challenge)
+    raise HTTPException(status_code=403, detail="Verificação inválida")
+
+
 @app.post("/webhook")
 async def webhook(request: Request):
     payload = await request.json()
 
-    event = payload.get("event", "")
-    if event != "messages.upsert":
+    if payload.get("object") != "whatsapp_business_account":
         return {"status": "ignored"}
 
-    data = payload.get("data", {})
-    key = data.get("key", {})
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            if change.get("field") != "messages":
+                continue
+            for message in change.get("value", {}).get("messages", []):
+                _handle_message(message)
 
-    if key.get("fromMe"):
-        return {"status": "ignored"}
+    return {"status": "ok"}
 
-    remote_jid: str = key.get("remoteJid", "")
 
-    # Ignorar grupos e broadcasts
-    if "@g.us" in remote_jid or "@broadcast" in remote_jid:
-        return {"status": "ignored"}
-
-    phone = remote_jid.replace("@s.whatsapp.net", "").strip()
+def _handle_message(message: dict):
+    phone = message.get("from", "")
     if not phone:
-        return {"status": "ignored"}
+        return
 
-    msg_type: str = data.get("messageType", "")
-    message: dict = data.get("message", {})
-
-    if msg_type == "conversation":
-        text = message.get("conversation", "")
-    elif msg_type == "extendedTextMessage":
-        text = message.get("extendedTextMessage", {}).get("text", "")
+    if message.get("type") == "text":
+        text = message.get("text", {}).get("body", "")
     else:
         send_message(phone, "Por favor, responda apenas com texto.")
-        return {"status": "non-text"}
+        return
 
     if not text:
-        return {"status": "ignored"}
+        return
 
     response = manager.process(phone, text)
     send_message(phone, response)
-
-    return {"status": "ok"}
 
 
 @app.get("/exportar")

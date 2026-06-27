@@ -1,5 +1,5 @@
 """
-Testes A/B — whatsapp.py (cliente Evolution API)
+Testes A/B — whatsapp.py (cliente Meta WhatsApp Cloud API)
 A = envio bem-sucedido
 B = falhas de rede / API
 """
@@ -14,48 +14,48 @@ PHONE = "5531999990000"
 TEXT = "Olá! Seja bem-vindo."
 
 
-# ─────────────────────────────────────────────────────────────
-#  A — ENVIO BEM-SUCEDIDO
-# ─────────────────────────────────────────────────────────────
-
 class TestEnvioWhatsApp:
-    def test_A_retorna_true_em_sucesso(self, monkeypatch):
+
+    # ── A — ENVIO BEM-SUCEDIDO ─────────────────────────────────
+
+    def test_A_retorna_true_em_sucesso(self):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
-        with patch("whatsapp.requests.post", return_value=mock_resp) as mock_post:
+        with patch("whatsapp.requests.post", return_value=mock_resp):
             result = send_message(PHONE, TEXT)
         assert result is True
 
-    def test_A_chama_url_correta(self, monkeypatch):
+    def test_A_chama_url_correta(self):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         with patch("whatsapp.requests.post", return_value=mock_resp) as mock_post:
             send_message(PHONE, TEXT)
-        call_kwargs = mock_post.call_args
-        url = call_kwargs[0][0]
-        assert "message/sendText" in url
-        assert "test-instance" in url
+        url = mock_post.call_args[0][0]
+        assert "graph.facebook.com" in url
+        assert "test_phone_number_id" in url
+        assert "messages" in url
 
-    def test_A_envia_number_e_text_corretos(self, monkeypatch):
+    def test_A_envia_payload_correto(self):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         with patch("whatsapp.requests.post", return_value=mock_resp) as mock_post:
             send_message(PHONE, TEXT)
         payload = mock_post.call_args[1]["json"]
-        assert payload["number"] == PHONE
-        assert payload["text"] == TEXT
+        assert payload["to"] == PHONE
+        assert payload["text"]["body"] == TEXT
+        assert payload["messaging_product"] == "whatsapp"
+        assert payload["type"] == "text"
 
-    def test_A_envia_apikey_no_header(self, monkeypatch):
+    def test_A_envia_bearer_token_no_header(self):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         with patch("whatsapp.requests.post", return_value=mock_resp) as mock_post:
             send_message(PHONE, TEXT)
         headers = mock_post.call_args[1]["headers"]
-        assert "apikey" in headers
+        assert "Authorization" in headers
+        assert headers["Authorization"].startswith("Bearer ")
 
-    # ─────────────────────────────────────────────────────────────
-    #  B — FALHAS
-    # ─────────────────────────────────────────────────────────────
+    # ── B — FALHAS ─────────────────────────────────────────────
 
     def test_B_retorna_false_em_connection_error(self):
         with patch("whatsapp.requests.post", side_effect=requests.ConnectionError()):
@@ -76,6 +76,5 @@ class TestEnvioWhatsApp:
 
     def test_B_nao_lanca_excecao_em_falha(self):
         with patch("whatsapp.requests.post", side_effect=Exception("erro genérico")):
-            # não deve propagar a exceção
             result = send_message(PHONE, TEXT)
         assert result is False

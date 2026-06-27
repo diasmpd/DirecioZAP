@@ -1,14 +1,21 @@
 import requests
 from config import settings
 
+_GRAPH_URL = "https://graph.facebook.com/v21.0"
+
 
 def send_message(phone: str, text: str) -> bool:
-    url = f"{settings.EVOLUTION_API_URL}/message/sendText/{settings.EVOLUTION_INSTANCE}"
+    url = f"{_GRAPH_URL}/{settings.META_PHONE_NUMBER_ID}/messages"
     headers = {
-        "apikey": settings.EVOLUTION_API_KEY,
+        "Authorization": f"Bearer {settings.META_TOKEN}",
         "Content-Type": "application/json",
     }
-    payload = {"number": phone, "text": text}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": phone,
+        "type": "text",
+        "text": {"body": text},
+    }
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         resp.raise_for_status()
