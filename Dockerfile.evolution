@@ -1,4 +1,4 @@
-FROM atendai/evolution-api:latest
+FROM evoapicloud/evolution-api:v2.3.1
 
 # Patch Baileys for WhatsApp 2026: only fix DICT_VERSION, remove broken use_new_auth_key ACK
 COPY patch_baileys.js /tmp/patch_baileys.js

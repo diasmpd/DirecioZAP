@@ -16,7 +16,7 @@ services:
       retries: 5
 
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: evoapicloud/evolution-api:v2.3.1
     container_name: evolution-api
     restart: unless-stopped
     ports:
