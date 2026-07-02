@@ -21,12 +21,26 @@ O administrador usa o **DirecioZAP Manager** (aplicativo desktop) para:
 
 ---
 
+## Guia Rapido — Para Quem Vai So Usar o Aplicativo (.exe)
+
+Se voce recebeu a pasta `DirecioZAP_Manager` pronta (nao vai mexer no codigo), e so isso que precisa saber:
+
+1. **Nao precisa instalar nada.** Python, ngrok e todas as dependencias ja vem dentro da pasta. Basta extrair o .zip em qualquer lugar (Area de Trabalho, Documentos etc.).
+2. **Nao precisa ser administrador do Windows.** O aplicativo roda com uma conta comum.
+3. Na primeira vez que abrir o `DirecioZAP_Manager.exe`, o Windows pode mostrar uma tela azul **"O Windows protegeu o seu PC"**. Isso e normal para programas novos sem assinatura digital paga — clique em **"Mais informacoes"** e depois em **"Executar assim mesmo"**.
+4. Ao clicar em **"Iniciar Bot"** pela primeira vez, o Firewall do Windows pode perguntar se permite acesso a rede. Pode clicar em **"Cancelar"** sem problema — o aplicativo continua funcionando normalmente (a conexao publica passa pelo ngrok, que nao depende dessa permissao).
+5. Va na aba **Configuracoes**, preencha as credenciais (Twilio ou Meta, Supabase, ngrok) e clique em **"Salvar Configuracoes"**.
+6. Volte para a barra lateral e clique em **"Iniciar Bot"**. A URL publica aparece embaixo do botao — cole essa URL no painel do Twilio/Meta.
+7. Duvidas sobre onde conseguir cada credencial? A aba **Tutorial**, dentro do proprio aplicativo, tem o passo a passo completo.
+
+---
+
 ## Requisitos
 
 | Software | Versao | Obs |
 |---|---|---|
-| Python | 3.11+ | |
-| ngrok | qualquer | Necessario para expor o webhook |
+| Python | 3.11+ | Apenas para rodar/buildar a partir do codigo-fonte |
+| ngrok | qualquer | So precisa instalar manualmente se rodar `python manager_app.py` direto; o .exe ja vem com o ngrok embutido |
 | Git | qualquer | Para clonar o repositorio |
 | Conta Supabase | gratuita | supabase.com |
 | Conta Twilio | gratuita (sandbox) | twilio.com |
@@ -193,9 +207,11 @@ O sandbox permite testar sem custo e sem aprovacao da Meta. Restricao: cada usua
 
 O ngrok cria um tunel HTTPS publico para o bot rodando localmente, permitindo que o Twilio/Meta entregue os webhooks.
 
-1. Acesse [ngrok.com/download](https://ngrok.com/download) e baixe o executavel.
-2. Coloque o `ngrok.exe` em uma pasta incluida no PATH (ex: `C:\Windows\System32`) ou em `C:\projetos\DirecioZAP\`.
-3. Crie uma conta gratuita em [ngrok.com](https://ngrok.com).
+> **No executavel (.exe) o ngrok ja vem embutido** — o `build.ps1` copia o `ngrok.exe` para dentro da pasta `dist\DirecioZAP_Manager\` automaticamente. Quem so vai usar o app pronto pode pular os passos 1 e 2 abaixo.
+
+1. (Somente para rodar a partir do codigo-fonte) Acesse [ngrok.com/download](https://ngrok.com/download) e baixe o executavel.
+2. (Somente para rodar a partir do codigo-fonte) Coloque o `ngrok.exe` em uma pasta incluida no PATH ou junto de `manager_app.py`.
+3. Crie uma conta gratuita em [ngrok.com](https://ngrok.com) — recomendado mesmo com o ngrok embutido, pois libera Auth Token e dominio estatico.
 4. No painel, copie o **Auth Token** e cole em `.env` como `NGROK_AUTH_TOKEN`.
 5. Opcionalmente, crie um **Dominio Estatico** (Domains no painel ngrok) e cole em `NGROK_DOMAIN`.
    Com dominio estatico, a URL nao muda a cada reinicio — ideal para nao precisar atualizar o Twilio toda vez.
@@ -321,7 +337,7 @@ ngrok http 3000
 
 ## Gerando o Executavel (.exe)
 
-O script `build.ps1` empacota o Manager e o bot em um diretorio distribuivel.
+O script `build.ps1` empacota o Manager, o bot e o **ngrok** em um diretorio distribuivel — o usuario final nao instala nada.
 
 ```powershell
 # Construir (mantendo dist\ anterior)
@@ -333,15 +349,25 @@ O script `build.ps1` empacota o Manager e o bot em um diretorio distribuivel.
 
 O resultado estara em `dist\DirecioZAP_Manager\`.
 
+**O que o build faz automaticamente:**
+1. Roda o PyInstaller e gera `DirecioZAP_Manager.exe`.
+2. Copia `.env.example` para `.env` (se ainda nao existir na pasta de destino).
+3. Cria a pasta `data\`.
+4. Procura um `ngrok.exe` na maquina de build (via PATH); se nao encontrar, instala via `winget install --id Ngrok.Ngrok` automaticamente. Em seguida copia o `ngrok.exe` para dentro de `dist\DirecioZAP_Manager\`, junto do executavel.
+   - Se a maquina de build nao tiver `winget` nem `ngrok` disponiveis, o build continua normalmente mas avisa no console que o ngrok nao foi embutido — nesse caso o usuario final precisaria instala-lo manualmente (ver secao "Configurando o ngrok").
+
 **Para distribuir:**
-1. Compacte a pasta `dist\DirecioZAP_Manager\` em um .zip.
+1. Compacte a pasta `dist\DirecioZAP_Manager\` inteira (incluindo o `ngrok.exe`) em um .zip.
 2. Entregue ao usuario final.
-3. O usuario descompacta e edita o arquivo `.env` com suas credenciais.
+3. O usuario descompacta e edita o arquivo `.env` (ou preenche pela aba Configuracoes) com suas credenciais.
 4. Duplo clique em `DirecioZAP_Manager.exe`.
 
 **Requisitos na maquina do usuario final:**
 - Windows 10/11 (64-bit)
-- ngrok instalado e no PATH
+- **Nao precisa de conta de administrador** — o app roda e grava tudo dentro da propria pasta
+- **Nao precisa instalar ngrok** — ja vem embutido no pacote
+- Na primeira execucao, o SmartScreen do Windows pode pedir uma confirmacao ("Executar assim mesmo") por o executavel nao ser assinado digitalmente — isso nao exige senha de administrador
+- O aviso de Firewall ao iniciar o bot pode ser ignorado (Cancelar) sem afetar o funcionamento, ja que o ngrok se conecta por `localhost`
 - Credenciais Twilio/Meta e Supabase proprias
 
 ---
@@ -408,3 +434,7 @@ Cobertura:
 ## Licenca
 
 Projeto privado. Todos os direitos reservados.
+
+---
+
+*Dias*

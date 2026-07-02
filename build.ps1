@@ -1,4 +1,4 @@
-# DirecioZAP Manager — build script
+﻿# DirecioZAP Manager - build script
 # Gera o executavel em dist\DirecioZAP_Manager\
 # Requisitos: Python 3.11+ no PATH, pip, pyinstaller
 
@@ -15,7 +15,7 @@ function Info($msg) { Write-Host "[BUILD] $msg" -ForegroundColor Cyan }
 function Ok($msg)   { Write-Host "[OK]    $msg" -ForegroundColor Green }
 function Err($msg)  { Write-Host "[ERRO]  $msg" -ForegroundColor Red; exit 1 }
 
-Info "DirecioZAP Manager — iniciando build"
+Info "DirecioZAP Manager - iniciando build"
 
 # 1. Limpar artefatos anteriores (opcional)
 if ($Clean) {
@@ -79,7 +79,7 @@ $Args = @(
     "--hidden-import=pydantic_settings",
     "--hidden-import=supabase",
     "--hidden-import=postgrest",
-    "--hidden-import=gotrue",
+    "--hidden-import=supabase_auth",
     "--hidden-import=realtime",
     "--hidden-import=storage3",
     "--hidden-import=requests",
@@ -107,6 +107,34 @@ if ((Test-Path $EnvSrc) -and (-not (Test-Path $EnvDst))) {
 # 8. Criar pasta data/ no dist
 $DataDir = Join-Path $DestDir "data"
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+
+# 9. Empacotar o ngrok.exe junto ao executavel, para o usuario final nao
+#    precisar instalar nada. Resolve via PATH ou, se ausente, instala via
+#    winget (canal oficial) so na maquina de build.
+Info "Verificando ngrok..."
+$NgrokCmd = Get-Command ngrok.exe -ErrorAction SilentlyContinue
+if (-not $NgrokCmd) { $NgrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue }
+
+if (-not $NgrokCmd) {
+    $WingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if ($WingetCmd) {
+        Info "ngrok nao encontrado nesta maquina. Instalando via winget..."
+        winget install --id Ngrok.Ngrok -e --silent --accept-package-agreements --accept-source-agreements
+        $NgrokCmd = Get-Command ngrok.exe -ErrorAction SilentlyContinue
+        if (-not $NgrokCmd) { $NgrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue }
+    } else {
+        Info "winget nao disponivel nesta maquina."
+    }
+}
+
+if ($NgrokCmd) {
+    Copy-Item $NgrokCmd.Source (Join-Path $DestDir "ngrok.exe") -Force
+    Ok "ngrok.exe incluido em: $DestDir\ngrok.exe (usuario final nao precisa instalar)."
+} else {
+    Write-Host "[AVISO] ngrok nao encontrado nesta maquina de build. O executavel final NAO tera o ngrok embutido." -ForegroundColor Yellow
+    Write-Host "        Instale o ngrok (winget install --id Ngrok.Ngrok -e) e rode o build novamente para inclui-lo." -ForegroundColor Yellow
+    Write-Host "        Sem o ngrok embutido, cada usuario final precisara instala-lo manualmente." -ForegroundColor Yellow
+}
 
 Ok "Build concluido!"
 Ok "Executavel em: $DestDir\DirecioZAP_Manager.exe"
