@@ -215,3 +215,12 @@ class TestWebhookIgnorados:
         resp = _post_assinado(client, _payload_texto(text="Empresa X"))
         assert resp.status_code == 200
         mock_manager.process.assert_called_once()
+
+
+class TestFalhaNoProcessamento:
+    def test_B_erro_no_processamento_avisa_fornecedor(self, client, meta_provider, mock_manager, mock_send):
+        mock_manager.process.side_effect = RuntimeError("Supabase fora do ar")
+        resp = _post_assinado(client, _payload_texto())
+        assert resp.status_code == 200
+        mock_send.assert_called_once()
+        assert "problema técnico" in mock_send.call_args[0][1]

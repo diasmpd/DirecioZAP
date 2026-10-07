@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 
 from config import settings
-from conversation import ConversationManager
+from conversation import MSGS, ConversationManager
 from whatsapp import send_message
 
 app = FastAPI(title="DirecioZap Bot")
@@ -41,6 +41,18 @@ def _assinatura_meta_valida(raw_body: bytes, header: str | None) -> bool:
         settings.META_APP_SECRET.encode(), raw_body, hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(esperado, header[len("sha256="):])
+
+
+def _responder(phone: str, text: str) -> None:
+    """Processa a mensagem e responde. Uma falha (ex: Supabase fora do ar) não pode
+    sumir em silêncio: o fornecedor recebe um aviso para tentar de novo."""
+    try:
+        response = manager.process(phone, text)
+    except Exception as exc:
+        print(f"[webhook] Erro ao processar mensagem de {phone}: {exc!r}")
+        send_message(phone, MSGS["ERRO_TECNICO"])
+        return
+    send_message(phone, response)
 
 
 @app.get("/")
@@ -85,8 +97,7 @@ async def _handle_twilio(request: Request):
     if not text:
         return Response(status_code=200)
 
-    response = manager.process(phone, text)
-    send_message(phone, response)
+    _responder(phone, text)
 
     return Response(status_code=200)
 
@@ -128,8 +139,7 @@ async def _handle_meta(request: Request):
     if not text:
         return Response(status_code=200)
 
-    response = manager.process(phone, text)
-    send_message(phone, response)
+    _responder(phone, text)
 
     return Response(status_code=200)
 

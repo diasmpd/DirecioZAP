@@ -148,3 +148,12 @@ class TestExportar:
         monkeypatch.setattr("main.settings.EXCEL_PATH", str(tmp_path / "nao_existe.xlsx"))
         resp = client.get(f"/exportar?token={TOKEN}")
         assert resp.status_code == 404
+
+
+class TestFalhaNoProcessamento:
+    def test_B_erro_no_processamento_avisa_fornecedor(self, client, mock_manager, mock_send):
+        mock_manager.process.side_effect = RuntimeError("Supabase fora do ar")
+        resp = client.post("/webhook", data=_form_texto())
+        assert resp.status_code == 200
+        mock_send.assert_called_once()
+        assert "problema técnico" in mock_send.call_args[0][1]

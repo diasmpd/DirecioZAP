@@ -18,6 +18,7 @@ MSGS = {
     "SAUDACAO": "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.",
     "SUCESSO": "Cadastro realizado com sucesso! Caso a obra precise de algum serviço, eles entram em contato com você.",
     "REINICIO": "Sem problemas, vamos recomeçar.",
+    "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
     "ERRO_SALVAR": "Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
     "MAX_TENTATIVAS": "Muitas tentativas inválidas. Envie uma mensagem para recomeçar.",
     "APENAS_TEXTO": "Por favor, responda apenas com texto.",
