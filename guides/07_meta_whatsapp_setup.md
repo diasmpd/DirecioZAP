@@ -71,7 +71,7 @@ O bot já implementa isso em `main.py`.
 ## Envio de mensagem (POST graph.facebook.com)
 
 ```http
-POST https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages
+POST https://graph.facebook.com/{META_API_VERSION}/{PHONE_NUMBER_ID}/messages
 Authorization: Bearer {META_TOKEN}
 Content-Type: application/json
 
@@ -91,7 +91,16 @@ Content-Type: application/json
 |---|---|
 | `META_TOKEN` | Meta Developers → App → WhatsApp → API Setup → "Generate access token" (válido 24h no sandbox; permanente em produção via System User) |
 | `META_PHONE_NUMBER_ID` | Meta Developers → App → WhatsApp → API Setup → seção "From" |
-| `VERIFY_TOKEN` | Qualquer string segura — você define e configura na Meta |
+| `META_VERIFY_TOKEN` | Qualquer string segura — você define e configura na Meta |
+| `META_APP_SECRET` | Meta Developers → App → App Settings → Basic → "App Secret". **Obrigatório**: sem ele o bot rejeita todos os webhooks (403) |
+| `META_API_VERSION` | Versão da Graph API (padrão `v23.0`). A Meta desativa versões ~2 anos após o lançamento — conferir em developers.facebook.com/docs/graph-api/changelog |
+
+### Assinatura dos webhooks
+
+Toda requisição da Meta traz o header `X-Hub-Signature-256: sha256=<HMAC>` — HMAC-SHA256 do corpo
+com o App Secret. O bot recalcula e rejeita (403) se não bater, para que ninguém que descubra a URL
+do ngrok consiga injetar mensagens falsas. IDs de mensagem (`wamid`) já processados são ignorados,
+pois a Meta pode reenviar o mesmo webhook.
 
 ---
 

@@ -940,6 +940,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         self.e_meta_phone_id, _ = self._field(self.card_meta, "Phone Number ID")
         self.e_meta_token, _ = self._field(self.card_meta, "Access Token", secret=True)
         self.e_meta_verify, _ = self._field(self.card_meta, "Verify Token")
+        self.e_meta_secret, _ = self._field(self.card_meta, "App Secret", secret=True)
 
         meta_row = ctk.CTkFrame(self.card_meta, fg_color="transparent")
         meta_row.pack(fill="x", padx=18, pady=(0, 16))
@@ -1013,6 +1014,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_PHONE_NUMBER_ID": self.e_meta_phone_id,
             "META_TOKEN": self.e_meta_token,
             "META_VERIFY_TOKEN": self.e_meta_verify,
+            "META_APP_SECRET": self.e_meta_secret,
             "NGROK_AUTH_TOKEN": self.e_ngrok_token,
             "NGROK_DOMAIN": self.e_ngrok_domain,
             "SUPABASE_URL": self.e_sb_url,
@@ -1035,6 +1037,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_PHONE_NUMBER_ID": self.e_meta_phone_id.get().strip(),
             "META_TOKEN": self.e_meta_token.get().strip(),
             "META_VERIFY_TOKEN": self.e_meta_verify.get().strip(),
+            "META_APP_SECRET": self.e_meta_secret.get().strip(),
             "NGROK_AUTH_TOKEN": self.e_ngrok_token.get().strip(),
             "NGROK_DOMAIN": self.e_ngrok_domain.get().strip(),
             "SUPABASE_URL": self.e_sb_url.get().strip(),
