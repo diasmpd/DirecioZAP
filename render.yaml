@@ -17,5 +17,3 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: EXCEL_PATH
-        value: ./data/fornecedores.xlsx

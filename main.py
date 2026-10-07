@@ -1,14 +1,15 @@
 import hashlib
 import hmac
 import json
-import os
 from collections import OrderedDict
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response
 
 from config import settings
 from conversation import MSGS, ConversationManager
+from excel_writer import gerar_excel
+from supabase_session import get_cadastros, get_todas_perguntas
 from whatsapp import send_message
 
 app = FastAPI(title="DirecioZap Bot")
@@ -148,11 +149,12 @@ async def _handle_meta(request: Request):
 def exportar(token: str):
     if token != settings.VERIFY_TOKEN:
         raise HTTPException(status_code=403, detail="Token inválido")
-    path = settings.EXCEL_PATH
-    if not os.path.exists(path):
+    cadastros = get_cadastros()
+    if not cadastros:
         raise HTTPException(status_code=404, detail="Nenhum cadastro salvo ainda")
-    return FileResponse(
-        path,
+    conteudo = gerar_excel(cadastros, get_todas_perguntas())
+    return Response(
+        content=conteudo,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="fornecedores.xlsx",
+        headers={"Content-Disposition": 'attachment; filename="fornecedores.xlsx"'},
     )

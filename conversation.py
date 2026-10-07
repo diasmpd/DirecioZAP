@@ -1,7 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import unicodedata
 
-from excel_writer import append_fornecedor
 from supabase_session import (
     create_session,
     delete_session,
@@ -309,12 +308,16 @@ class ConversationManager:
             if resp in {"S", "SIM", "YES", "Y"}:
                 try:
                     save_cadastro(phone, dados)
-                    append_fornecedor(phone, dados, perguntas)
-                    delete_session(phone)
-                    return MSGS["SUCESSO"]
                 except Exception as exc:
-                    print(f"[conversation] Erro ao salvar: {exc}")
+                    print(f"[conversation] Erro ao salvar cadastro de {phone}: {exc!r}")
                     return MSGS["ERRO_SALVAR"]
+                # O cadastro já está salvo: uma falha daqui em diante não pode levar o
+                # fornecedor a confirmar de novo (o que duplicaria o registro).
+                try:
+                    delete_session(phone)
+                except Exception as exc:
+                    print(f"[conversation] Cadastro salvo, mas falhou ao encerrar sessão de {phone}: {exc!r}")
+                return MSGS["SUCESSO"]
             if resp in {"N", "NAO", "NÃO", "NO"}:
                 delete_session(phone)
                 create_session(phone)

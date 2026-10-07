@@ -2,7 +2,6 @@
 Fixtures compartilhadas entre todos os testes.
 """
 import os
-import tempfile
 import pytest
 from unittest.mock import MagicMock
 
@@ -12,10 +11,6 @@ os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")
 os.environ.setdefault("VERIFY_TOKEN", "test_verify_token")
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test_supabase_key")
-os.environ.setdefault(
-    "EXCEL_PATH",
-    os.path.join(tempfile.gettempdir(), "test_fornecedores.xlsx"),
-)
 
 CNPJ_VALIDO = "11.222.333/0001-81"
 CNPJ_RAW_VALIDO = "11222333000181"
@@ -68,13 +63,3 @@ def mock_send_message(monkeypatch):
     mock = MagicMock(return_value=True)
     monkeypatch.setattr("whatsapp.send_message", mock)
     return mock
-
-
-@pytest.fixture(autouse=True)
-def limpar_excel_teste():
-    path = os.environ["EXCEL_PATH"]
-    if os.path.exists(path):
-        os.remove(path)
-    yield
-    if os.path.exists(path):
-        os.remove(path)

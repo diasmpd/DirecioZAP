@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     VERIFY_TOKEN: str
     SUPABASE_URL: str
     SUPABASE_KEY: str
-    EXCEL_PATH: str = "./data/fornecedores.xlsx"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

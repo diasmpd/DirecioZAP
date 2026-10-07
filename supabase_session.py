@@ -69,3 +69,29 @@ def save_cadastro(phone: str, dados: dict) -> None:
     _get_client().table("cadastros").insert(
         {"phone": phone, "dados": dados}
     ).execute()
+
+
+_PAGINA = 1000  # limite padrão de linhas por requisição no Supabase
+
+
+def get_cadastros() -> list[dict]:
+    rows: list[dict] = []
+    inicio = 0
+    while True:
+        result = (
+            _get_client()
+            .table("cadastros")
+            .select("*")
+            .order("criado_em")
+            .range(inicio, inicio + _PAGINA - 1)
+            .execute()
+        )
+        rows.extend(result.data)
+        if len(result.data) < _PAGINA:
+            return rows
+        inicio += _PAGINA
+
+
+def get_todas_perguntas() -> list[dict]:
+    """Inclui as inativas — usadas para rotular colunas de cadastros antigos na exportação."""
+    return _get_client().table("perguntas").select("*").order("ordem").execute().data

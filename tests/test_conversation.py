@@ -45,13 +45,6 @@ def mock_session_module(monkeypatch, sample_perguntas):
     return mocks
 
 
-@pytest.fixture
-def mock_excel(monkeypatch):
-    mock = MagicMock()
-    monkeypatch.setattr("conversation.append_fornecedor", mock)
-    return mock
-
-
 # ─────────────────────────────────────────────────────────────
 #  A — FLUXO FELIZ COMPLETO
 # ─────────────────────────────────────────────────────────────
@@ -118,7 +111,7 @@ class TestFluxoFeliz:
         update_call = mock_session_module["update_session"].call_args
         assert update_call[0][2]["estados"] == "MG, SP"
 
-    def test_A_confirmacao_salva_supabase_e_excel(self, manager, mock_session_module, mock_excel):
+    def test_A_confirmacao_salva_supabase(self, manager, mock_session_module):
         dados = {
             "razao_social": "EMPRESA LTDA",
             "cnpj": CNPJ_FMT,
@@ -130,13 +123,11 @@ class TestFluxoFeliz:
         resp = manager.process(PHONE, "S")
         assert MSGS["SUCESSO"] in resp
         mock_session_module["save_cadastro"].assert_called_once_with(PHONE, dados)
-        mock_excel.assert_called_once_with(PHONE, dados, SAMPLE_PERGUNTAS)
         mock_session_module["delete_session"].assert_called_once_with(PHONE)
 
-    def test_A_confirmacao_sim_variantes(self, manager, mock_session_module, mock_excel):
+    def test_A_confirmacao_sim_variantes(self, manager, mock_session_module):
         dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
         for variante in ["SIM", "s", "sim", "YES", "Y"]:
-            mock_excel.reset_mock()
             mock_session_module["save_cadastro"].reset_mock()
             mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
             resp = manager.process(PHONE, variante)
@@ -192,20 +183,20 @@ class TestFluxoErro:
         resp = manager.process(PHONE, "ZZ")
         assert MSGS["MAX_TENTATIVAS"] in resp
 
-    def test_B_confirmacao_negativa_reinicia(self, manager, mock_session_module, mock_excel):
+    def test_B_confirmacao_negativa_reinicia(self, manager, mock_session_module):
         dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
         mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
         resp = manager.process(PHONE, "N")
         assert MSGS["REINICIO"] in resp
-        mock_excel.assert_not_called()
+        mock_session_module["save_cadastro"].assert_not_called()
         mock_session_module["delete_session"].assert_called_with(PHONE)
 
-    def test_B_confirmacao_resposta_invalida(self, manager, mock_session_module, mock_excel):
+    def test_B_confirmacao_resposta_invalida(self, manager, mock_session_module):
         dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
         mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
         resp = manager.process(PHONE, "talvez")
         assert "S" in resp and "N" in resp
-        mock_excel.assert_not_called()
+        mock_session_module["save_cadastro"].assert_not_called()
 
     def test_B_sessao_expirada_reinicia(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
@@ -215,12 +206,22 @@ class TestFluxoErro:
         mock_session_module["delete_session"].assert_called_once_with(PHONE)
         mock_session_module["create_session"].assert_called_with(PHONE)
 
-    def test_B_erro_ao_salvar_retorna_mensagem_erro(self, manager, mock_session_module, mock_excel):
-        mock_excel.side_effect = IOError("disco cheio")
+    def test_B_erro_ao_salvar_retorna_mensagem_erro(self, manager, mock_session_module):
+        mock_session_module["save_cadastro"].side_effect = IOError("Supabase fora do ar")
         dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
         mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
         resp = manager.process(PHONE, "S")
         assert MSGS["ERRO_SALVAR"] in resp
+        mock_session_module["delete_session"].assert_not_called()
+
+    def test_B_falha_ao_encerrar_sessao_apos_salvar_ainda_confirma(self, manager, mock_session_module):
+        # Cadastro já salvo: o fornecedor não pode ser levado a confirmar de novo (duplicaria).
+        mock_session_module["delete_session"].side_effect = IOError("timeout")
+        dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
+        resp = manager.process(PHONE, "S")
+        assert MSGS["SUCESSO"] in resp
+        mock_session_module["save_cadastro"].assert_called_once()
 
     def test_B_razao_social_vazia_rejeita(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session("AGUARDA_razao_social")

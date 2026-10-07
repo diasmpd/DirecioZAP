@@ -1,14 +1,13 @@
 """
-Testes A/B — excel_writer.py (colunas dinâmicas via perguntas)
+Testes A/B — excel_writer.py (planilha gerada a partir dos cadastros do Supabase)
 A = comportamento esperado
-B = edge cases (múltiplos appends, concorrência)
+B = edge cases (formulário alterado, dados faltando, datas)
 """
-import os
-import threading
-import pytest
+import io
+
 import openpyxl
 
-from excel_writer import append_fornecedor
+from excel_writer import gerar_excel
 from tests.conftest import SAMPLE_PERGUNTAS, PHONE
 
 DADOS_BASE = {
@@ -20,90 +19,86 @@ DADOS_BASE = {
 }
 
 CABECALHO_ESPERADO = (
-    "Telefone", "Razão Social", "CNPJ", "Contato", "Serviço", "Estados", "Data Cadastro"
+    "Telefone", "Razão Social", "CNPJ", "Contato", "Serviço", "Estados", "Data Cadastro (Brasília)"
 )
 
 
-def _ler_planilha(path: str):
-    wb = openpyxl.load_workbook(path)
+def _cadastro(dados=None, criado_em="2026-10-07T15:00:00+00:00", phone=PHONE):
+    return {"phone": phone, "dados": dados if dados is not None else dict(DADOS_BASE), "criado_em": criado_em}
+
+
+def _ler(conteudo: bytes):
+    wb = openpyxl.load_workbook(io.BytesIO(conteudo))
     return [row for row in wb.active.iter_rows(values_only=True)]
 
 
-class TestExcelWriter:
+class TestGerarExcel:
 
     # ── A — COMPORTAMENTO ESPERADO ─────────────────────────────
 
-    def test_A_cria_arquivo_com_cabecalho(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, DADOS_BASE, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
+    def test_A_cabecalho_segue_perguntas(self):
+        rows = _ler(gerar_excel([_cadastro()], SAMPLE_PERGUNTAS))
         assert rows[0] == CABECALHO_ESPERADO
 
-    def test_A_primeira_linha_com_telefone(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, DADOS_BASE, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
-        assert rows[1][0] == PHONE
-        assert rows[1][1] == "EMPRESA TESTE LTDA"
-        assert rows[1][2] == "11.222.333/0001-81"
-        assert rows[1][3] == "(31) 99999-0000"
-        assert rows[1][4] == "Consultoria Em Ti"
-        assert rows[1][5] == "MG, SP"
+    def test_A_linha_com_dados(self):
+        rows = _ler(gerar_excel([_cadastro()], SAMPLE_PERGUNTAS))
+        assert rows[1][:6] == (PHONE, "EMPRESA TESTE LTDA", "11.222.333/0001-81",
+                               "(31) 99999-0000", "Consultoria Em Ti", "MG, SP")
 
-    def test_A_data_cadastro_preenchida(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, DADOS_BASE, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
-        assert rows[1][6] is not None
+    def test_A_data_convertida_para_brasilia(self):
+        rows = _ler(gerar_excel([_cadastro(criado_em="2026-10-07T15:00:00+00:00")], SAMPLE_PERGUNTAS))
+        assert rows[1][6] == "2026-10-07 12:00:00"
 
-    def test_A_multiplos_sem_duplicar_cabecalho(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, DADOS_BASE, SAMPLE_PERGUNTAS)
-        append_fornecedor(PHONE, {**DADOS_BASE, "razao_social": "SEGUNDA EMPRESA"}, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
-        assert len(rows) == 3
+    def test_A_ordenado_por_data_de_cadastro(self):
+        cadastros = [
+            _cadastro({**DADOS_BASE, "razao_social": "SEGUNDA"}, criado_em="2026-10-07T16:00:00+00:00"),
+            _cadastro({**DADOS_BASE, "razao_social": "PRIMEIRA"}, criado_em="2026-10-07T15:00:00+00:00"),
+        ]
+        rows = _ler(gerar_excel(cadastros, SAMPLE_PERGUNTAS))
+        assert [r[1] for r in rows[1:]] == ["PRIMEIRA", "SEGUNDA"]
+
+    def test_A_ordem_das_colunas_segue_campo_ordem(self):
+        invertidas = list(reversed(SAMPLE_PERGUNTAS))
+        rows = _ler(gerar_excel([_cadastro()], invertidas))
         assert rows[0] == CABECALHO_ESPERADO
-        assert rows[1][1] == "EMPRESA TESTE LTDA"
-        assert rows[2][1] == "SEGUNDA EMPRESA"
 
-    # ── B — EDGE CASES ─────────────────────────────────────────
+    # ── B — FORMULÁRIO ALTERADO / EDGE CASES ───────────────────
 
-    def test_B_campos_faltando_nao_quebra(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, {}, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
+    def test_B_pergunta_nova_nao_desalinha_cadastros_antigos(self):
+        perguntas = SAMPLE_PERGUNTAS + [{
+            "id": 6, "ordem": 6, "campo": "site", "label": "Site",
+            "pergunta": "Site?", "tipo": "texto", "msg_erro": None, "ativo": True,
+        }]
+        cadastros = [_cadastro(), _cadastro({**DADOS_BASE, "site": "empresa.com"})]
+        rows = _ler(gerar_excel(cadastros, perguntas))
+        assert rows[0][6] == "Site"
+        assert rows[1][6] in ("", None)
+        assert rows[2][6] == "empresa.com"
+        assert rows[1][1] == rows[2][1] == "EMPRESA TESTE LTDA"
+
+    def test_B_campo_removido_das_perguntas_continua_na_planilha(self):
+        perguntas = [p for p in SAMPLE_PERGUNTAS if p["campo"] != "servico"]
+        rows = _ler(gerar_excel([_cadastro()], perguntas))
+        assert "servico" in rows[0]
+        assert "Consultoria Em Ti" in rows[1]
+
+    def test_B_pergunta_inativa_com_dados_mantem_label(self):
+        perguntas = [dict(p, ativo=False) if p["campo"] == "servico" else p for p in SAMPLE_PERGUNTAS]
+        rows = _ler(gerar_excel([_cadastro()], perguntas))
+        assert "Serviço" in rows[0]
+
+    def test_B_pergunta_inativa_sem_dados_omitida(self):
+        perguntas = SAMPLE_PERGUNTAS + [{
+            "id": 7, "ordem": 7, "campo": "antiga", "label": "Antiga",
+            "pergunta": "?", "tipo": "texto", "msg_erro": None, "ativo": False,
+        }]
+        rows = _ler(gerar_excel([_cadastro()], perguntas))
+        assert "Antiga" not in rows[0]
+
+    def test_B_campos_faltando_nao_quebra(self):
+        rows = _ler(gerar_excel([_cadastro({})], SAMPLE_PERGUNTAS))
         assert len(rows) == 2
 
-    def test_B_arquivo_existente_preservado(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        append_fornecedor(PHONE, DADOS_BASE, SAMPLE_PERGUNTAS)
-        append_fornecedor(PHONE, {**DADOS_BASE, "razao_social": "SEGUNDA"}, SAMPLE_PERGUNTAS)
-        rows = _ler_planilha(path)
-        assert rows[1][1] == "EMPRESA TESTE LTDA"
-
-    def test_B_concorrencia_thread_safe(self, tmp_path, monkeypatch):
-        path = str(tmp_path / "test.xlsx")
-        monkeypatch.setattr("excel_writer.settings.EXCEL_PATH", path)
-        errors = []
-
-        def worker(n):
-            try:
-                append_fornecedor(PHONE, {**DADOS_BASE, "razao_social": f"EMPRESA {n}"}, SAMPLE_PERGUNTAS)
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert not errors
-        rows = _ler_planilha(path)
-        assert len(rows) == 11
+    def test_B_data_ausente_ou_invalida(self):
+        rows = _ler(gerar_excel([_cadastro(criado_em=None), _cadastro(criado_em="ontem")], SAMPLE_PERGUNTAS))
+        assert {rows[1][6], rows[2][6]} <= {None, "", "ontem"}

@@ -10,7 +10,8 @@ Bot de WhatsApp para coleta de cadastros de fornecedores. Conduz conversas autom
 Usuario WhatsApp  →  Twilio/Meta  →  ngrok (tunel)  →  Bot FastAPI (local)
                                                             ↓
                                                        Supabase (sessoes, cadastros)
-                                                       Excel local (backup)
+                                                         ↓
+                                                       Excel gerado sob demanda (/exportar)
 ```
 
 O administrador usa o **DirecioZAP Manager** (aplicativo desktop) para:
@@ -57,7 +58,7 @@ DirecioZAP/
 ├── conversation.py         # Motor de conversa dinamico
 ├── whatsapp.py             # Envio de mensagens via Twilio
 ├── supabase_session.py     # Acesso ao banco (sessoes, perguntas, cadastros)
-├── excel_writer.py         # Exportacao para .xlsx (thread-safe)
+├── excel_writer.py         # Gera o .xlsx a partir dos cadastros do Supabase
 ├── validators.py           # Validacao de CNPJ, telefone, e-mail, estados
 ├── requirements.txt        # Dependencias do bot
 ├── requirements_manager.txt # Dependencias do aplicativo desktop
@@ -119,9 +120,6 @@ SUPABASE_KEY=coloque_aqui
 
 # Seguranca
 VERIFY_TOKEN=gere_um_token_seguro
-
-# Excel
-EXCEL_PATH=./data/fornecedores.xlsx
 ```
 
 ---
@@ -319,7 +317,6 @@ ngrok http 3000
 5. Apos a ultima pergunta, o bot exibe um resumo e pede confirmacao (S/N).
 6. Ao confirmar:
    - Dados salvos no Supabase (tabela `cadastros`)
-   - Dados adicionados ao Excel local
    - Sessao encerrada
 7. Sessions expiram apos 24 horas sem interacao.
 
@@ -380,7 +377,7 @@ pytest -v
 
 Cobertura:
 - `test_conversation.py` — fluxo feliz e erros (18 cenarios)
-- `test_excel_writer.py` — criacao, append, concorrencia
+- `test_excel_writer.py` — geracao da planilha, colunas quando o formulario muda, datas
 - `test_validators.py` — CNPJ, telefone, e-mail, estados
 
 ---
@@ -417,7 +414,6 @@ Cobertura:
 | `SUPABASE_URL` | Sim | URL do projeto Supabase |
 | `SUPABASE_KEY` | Sim | Chave anon public do Supabase |
 | `VERIFY_TOKEN` | Sim | Token para proteger `/exportar` |
-| `EXCEL_PATH` | Nao | Caminho do arquivo Excel (padrao: `./data/fornecedores.xlsx`) |
 
 ---
 

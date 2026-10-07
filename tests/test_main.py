@@ -126,26 +126,36 @@ class TestWebhookIgnorados:
 # ─────────────────────────────────────────────────────────────
 
 class TestExportar:
-    def test_A_retorna_arquivo_com_token_correto(self, client, tmp_path, monkeypatch):
-        path = str(tmp_path / "fornecedores.xlsx")
+    CADASTRO = {"phone": PHONE, "dados": {"razao_social": "EMPRESA X"}, "criado_em": "2026-10-07T15:00:00+00:00"}
+
+    @pytest.fixture
+    def mock_dados(self, monkeypatch):
+        cadastros = MagicMock(return_value=[self.CADASTRO])
+        monkeypatch.setattr("main.get_cadastros", cadastros)
+        monkeypatch.setattr("main.get_todas_perguntas", MagicMock(return_value=[]))
+        return cadastros
+
+    def test_A_retorna_planilha_gerada_do_supabase(self, client, mock_dados):
+        import io
         import openpyxl
-        wb = openpyxl.Workbook()
-        wb.save(path)
-        monkeypatch.setattr("main.settings.EXCEL_PATH", path)
         resp = client.get(f"/exportar?token={TOKEN}")
         assert resp.status_code == 200
         assert "spreadsheetml" in resp.headers["content-type"]
+        assert "fornecedores.xlsx" in resp.headers["content-disposition"]
+        rows = list(openpyxl.load_workbook(io.BytesIO(resp.content)).active.iter_rows(values_only=True))
+        assert rows[1][0] == PHONE
 
-    def test_B_retorna_403_com_token_errado(self, client):
+    def test_B_retorna_403_com_token_errado(self, client, mock_dados):
         resp = client.get("/exportar?token=token_errado")
         assert resp.status_code == 403
+        mock_dados.assert_not_called()
 
-    def test_B_retorna_403_sem_token(self, client):
+    def test_B_retorna_422_sem_token(self, client):
         resp = client.get("/exportar")
         assert resp.status_code == 422
 
-    def test_B_retorna_404_sem_arquivo(self, client, tmp_path, monkeypatch):
-        monkeypatch.setattr("main.settings.EXCEL_PATH", str(tmp_path / "nao_existe.xlsx"))
+    def test_B_retorna_404_sem_cadastros(self, client, mock_dados):
+        mock_dados.return_value = []
         resp = client.get(f"/exportar?token={TOKEN}")
         assert resp.status_code == 404
 
