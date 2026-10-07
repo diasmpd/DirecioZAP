@@ -80,8 +80,27 @@ class TestCNPJ:
         assert normalizar_cnpj("11222333000199") is None
 
     def test_B_letras_no_meio(self):
-        # Após extrair dígitos, comprimento errado
+        # Formato alfanumérico válido, mas os dígitos verificadores não batem
         assert normalizar_cnpj("11.ABC.333/0001-81") is None
+
+    # CNPJ alfanumérico (IN RFB 2.229/2024) — exemplo oficial da Receita Federal
+    def test_A_alfanumerico_exemplo_oficial(self):
+        assert normalizar_cnpj("12.ABC.345/01DE-35") == "12.ABC.345/01DE-35"
+
+    def test_A_alfanumerico_minusculo_sem_pontuacao(self):
+        assert normalizar_cnpj("12abc34501de35") == "12.ABC.345/01DE-35"
+
+    def test_A_com_prefixo_cnpj(self):
+        assert normalizar_cnpj("CNPJ: 11.222.333/0001-81") == self.CNPJ_OK_FMT
+
+    def test_B_alfanumerico_dv_errado(self):
+        assert normalizar_cnpj("12.ABC.345/01DE-36") is None
+
+    def test_B_letra_no_digito_verificador(self):
+        assert normalizar_cnpj("12.ABC.345/01DE-3A") is None
+
+    def test_B_texto_livre(self):
+        assert normalizar_cnpj("não sei o cnpj") is None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -117,6 +136,24 @@ class TestContato:
 
     def test_B_telefone_12_digitos(self):
         assert normalizar_contato("319999900001") is None
+
+    def test_A_celular_com_codigo_pais(self):
+        assert normalizar_contato("+55 31 99999-0000") == "(31) 99999-0000"
+
+    def test_A_fixo_com_codigo_pais(self):
+        assert normalizar_contato("+55 (31) 3333-0000") == "(31) 3333-0000"
+
+    def test_A_celular_com_zero_longa_distancia(self):
+        assert normalizar_contato("031 99999-0000") == "(31) 99999-0000"
+
+    def test_A_fixo_com_zero_longa_distancia(self):
+        assert normalizar_contato("031 3333-0000") == "(31) 3333-0000"
+
+    def test_A_ddd_55_nao_confundido_com_codigo_pais(self):
+        assert normalizar_contato("(55) 99999-0000") == "(55) 99999-0000"
+
+    def test_A_ddd_55_com_codigo_pais(self):
+        assert normalizar_contato("+55 55 99999-0000") == "(55) 99999-0000"
 
     def test_B_email_sem_arroba(self):
         assert normalizar_contato("contato_empresa.com") is None
@@ -207,6 +244,18 @@ class TestEstados:
         assert "SP" in resultado
 
     # B — rejeita entradas inválidas
+    def test_A_conector_e(self):
+        assert normalizar_estados("MG e SP") == ["MG", "SP"]
+
+    def test_A_virgula_e_conector(self):
+        assert normalizar_estados("mg, sp e rj.") == ["MG", "RJ", "SP"]
+
+    def test_A_separado_hifen(self):
+        assert normalizar_estados("MG-SP") == ["MG", "SP"]
+
+    def test_B_apenas_conector(self):
+        assert normalizar_estados("e") is None
+
     def test_B_sigla_inexistente(self):
         assert normalizar_estados("XX") is None
 
