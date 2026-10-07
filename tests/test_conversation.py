@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timezone, timedelta
 
-from conversation import ConversationManager, MSGS
+from conversation import ConversationManager, MSGS, MAX_TENTATIVAS
 from tests.conftest import SAMPLE_PERGUNTAS, CNPJ_VALIDO, CNPJ_RAW_VALIDO, PHONE
 
 CNPJ_FMT = CNPJ_VALIDO
@@ -231,3 +231,122 @@ class TestFluxoErro:
         mock_session_module["get_perguntas"].return_value = []
         resp = manager.process(PHONE, "oi")
         assert MSGS["SEM_CONFIG"] in resp
+
+
+class TestFluxoConversacional:
+    def test_C_ajuda_durante_pergunta(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_cnpj", {"razao_social": "Empresa X"}
+        )
+        resp = manager.process(PHONE, "ajuda")
+        assert "Exemplo de CNPJ" in resp
+        assert "CNPJ" in resp
+
+    def test_C_voltar_para_pergunta_anterior(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_contato", {"razao_social": "X", "cnpj": CNPJ_FMT}
+        )
+        resp = manager.process(PHONE, "voltar")
+        assert "corrigir" in resp.lower()
+        update_call = mock_session_module["update_session"].call_args
+        assert update_call[0][1] == "AGUARDA_cnpj"
+
+    def test_C_alterar_campo_na_confirmacao(self, manager, mock_session_module):
+        dados = {
+            "razao_social": "EMPRESA LTDA",
+            "cnpj": CNPJ_FMT,
+            "contato": "contato@empresa.com",
+            "servico": "Consultoria",
+            "estados": "MG, SP",
+        }
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
+        resp = manager.process(PHONE, "alterar cnpj")
+        assert "ajustar" in resp.lower()
+        assert CNPJ_FMT in resp  # mostra o valor atual
+        state, dados_salvos = mock_session_module["update_session"].call_args[0][1:3]
+        assert state == "ALTERA_cnpj"
+        assert dados_salvos == dados  # nenhum campo apagado
+
+    def test_C_cancelar_fluxo(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_razao_social")
+        resp = manager.process(PHONE, "cancelar")
+        assert "encerramos" in resp.lower()
+        mock_session_module["delete_session"].assert_called_once_with(PHONE)
+
+
+DADOS_COMPLETOS = {
+    "razao_social": "EMPRESA LTDA",
+    "cnpj": CNPJ_FMT,
+    "contato": "contato@empresa.com",
+    "servico": "Consultoria",
+    "estados": "MG, SP",
+}
+
+
+class TestComandosSoComRespostaInteira:
+    def test_C_resposta_com_palavra_ajuda_e_aceita(self, manager, mock_session_module):
+        dados = {k: DADOS_COMPLETOS[k] for k in ("razao_social", "cnpj", "contato")}
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_servico", dados)
+        manager.process(PHONE, "Consultoria e ajuda técnica")
+        state, dados_salvos = mock_session_module["update_session"].call_args[0][1:3]
+        assert state == "AGUARDA_estados"
+        assert dados_salvos["servico"] == "Consultoria e ajuda técnica"
+
+    def test_C_resposta_com_palavra_voltar_e_aceita(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_razao_social")
+        manager.process(PHONE, "Voltar Engenharia Ltda")
+        state = mock_session_module["update_session"].call_args[0][1]
+        assert state == "AGUARDA_cnpj"
+
+    def test_C_ajuda_na_saudacao_avanca_para_primeira_pergunta(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("SAUDACAO")
+        manager.process(PHONE, "ajuda")
+        state = mock_session_module["update_session"].call_args[0][1]
+        assert state == "AGUARDA_razao_social"
+
+
+class TestAlterarCampoUnico:
+    def test_C_resposta_valida_volta_para_confirmacao(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("ALTERA_servico", dict(DADOS_COMPLETOS))
+        resp = manager.process(PHONE, "Pintura")
+        state, dados_salvos = mock_session_module["update_session"].call_args[0][1:3]
+        assert state == "CONFIRMACAO"
+        assert dados_salvos == {**DADOS_COMPLETOS, "servico": "Pintura"}
+        assert "Resumo do cadastro" in resp
+
+    def test_C_voltar_mantem_valor_anterior(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("ALTERA_cnpj", dict(DADOS_COMPLETOS))
+        resp = manager.process(PHONE, "voltar")
+        state, dados_salvos = mock_session_module["update_session"].call_args[0][1:3]
+        assert state == "CONFIRMACAO"
+        assert dados_salvos == DADOS_COMPLETOS
+        assert "valor anterior" in resp
+
+    def test_C_max_tentativas_mantem_valor_e_nao_apaga_sessao(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "ALTERA_cnpj", dict(DADOS_COMPLETOS), {"cnpj": MAX_TENTATIVAS - 1}
+        )
+        resp = manager.process(PHONE, "123")
+        state, dados_salvos = mock_session_module["update_session"].call_args[0][1:3]
+        assert state == "CONFIRMACAO"
+        assert dados_salvos["cnpj"] == CNPJ_FMT
+        mock_session_module["delete_session"].assert_not_called()
+        assert "valor anterior" in resp
+
+    def test_C_resposta_invalida_continua_no_campo(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("ALTERA_cnpj", dict(DADOS_COMPLETOS))
+        manager.process(PHONE, "123")
+        state = mock_session_module["update_session"].call_args[0][1]
+        assert state == "ALTERA_cnpj"
+
+    def test_C_alterar_campo_desconhecido(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dict(DADOS_COMPLETOS))
+        resp = manager.process(PHONE, "alterar endereço")
+        assert "Não identifiquei" in resp
+        mock_session_module["update_session"].assert_not_called()
+
+    def test_C_alterar_por_label(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dict(DADOS_COMPLETOS))
+        manager.process(PHONE, "mudar razão social")
+        state = mock_session_module["update_session"].call_args[0][1]
+        assert state == "ALTERA_razao_social"
