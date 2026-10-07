@@ -208,7 +208,7 @@ class UvicornServer:
     def run(self):
         import uvicorn
         config = uvicorn.Config(
-            self._app, host="0.0.0.0", port=self._port, log_level="error"
+            self._app, host="127.0.0.1", port=self._port, log_level="error"
         )
 
         class _S(uvicorn.Server):

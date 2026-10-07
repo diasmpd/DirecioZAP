@@ -65,7 +65,7 @@ if ($envMap.ContainsKey("NGROK_AUTH_TOKEN") -and $envMap["NGROK_AUTH_TOKEN"]) {
 
 Info "[1/3] Subindo backend FastAPI na porta 3000"
 $backend = Start-Process -FilePath $venvUvicorn `
-    -ArgumentList "main:app --host 0.0.0.0 --port 3000" `
+    -ArgumentList "main:app --host 127.0.0.1 --port 3000" `
     -WorkingDirectory $ROOT `
     -PassThru -WindowStyle Minimized
 Ok "Backend iniciado (PID $($backend.Id))"

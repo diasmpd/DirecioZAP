@@ -300,7 +300,7 @@ Documentacao completa embutida no aplicativo.
 ```bash
 # Terminal 1 — Bot
 .venv\Scripts\activate
-uvicorn main:app --host 0.0.0.0 --port 3000 --reload
+uvicorn main:app --host 127.0.0.1 --port 3000 --reload
 
 # Terminal 2 — ngrok
 ngrok http 3000
