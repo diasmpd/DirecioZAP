@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS cadastros (
   id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone     TEXT NOT NULL,
   dados     JSONB NOT NULL,
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Preenchido pelo avisos_pc.py quando o e-mail de aviso sai; NULL = aviso pendente.
+  notificado_em TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -129,6 +131,14 @@ class Database:
         Retorna True quando inseriu as perguntas padrão."""
         with self._conn() as conn:
             conn.execute(SCHEMA_SQL)
+            sem_coluna = conn.execute(
+                "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'cadastros' AND column_name = 'notificado_em')"
+            ).fetchone()[0]
+            if sem_coluna:
+                # Banco anterior aos avisos: os cadastros que já existem não devem gerar e-mail.
+                conn.execute("ALTER TABLE cadastros ADD COLUMN notificado_em TIMESTAMPTZ")
+                conn.execute("UPDATE cadastros SET notificado_em = NOW()")
             vazio = conn.execute("SELECT NOT EXISTS (SELECT 1 FROM perguntas)").fetchone()[0]
             if vazio:
                 conn.cursor().executemany(
@@ -232,6 +242,12 @@ class Database:
             fetch=False,
         )
 
+    def get_cadastros_sem_aviso(self) -> list[dict]:
+        return self._query("SELECT * FROM cadastros WHERE notificado_em IS NULL ORDER BY criado_em")
+
+    def marcar_notificado(self, id_: str) -> None:
+        self._query("UPDATE cadastros SET notificado_em = NOW() WHERE id = %s", (id_,), fetch=False)
+
     def get_cadastros(self, limit: int | None = None, recentes_primeiro: bool = False) -> list[dict]:
         ordem = "DESC" if recentes_primeiro else "ASC"
         if limit is None:
@@ -305,6 +321,10 @@ def save_cadastro(phone: str, dados: dict) -> None:
 
 def get_cadastros() -> list[dict]:
     return _get_db().get_cadastros()
+
+
+def init_schema() -> bool:
+    return _get_db().init_schema()
 
 
 def delete_sessoes_expiradas(horas: int = 24) -> int:

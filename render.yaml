@@ -1,17 +1,30 @@
+# Bot na nuvem (Render): Render > New > Blueprint > este repositório.
+# Os valores com sync: false são pedidos na criação (copie do .env local) e ficam só no Render.
 services:
   - type: web
     name: direciozap-bot
-    env: python
+    runtime: python
+    plan: free
+    region: virginia
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
     envVars:
-      - key: TWILIO_ACCOUNT_SID
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: WHATSAPP_PROVIDER
+        value: Meta
+      - key: META_API_VERSION
+        value: v23.0
+      - key: META_PHONE_NUMBER_ID
         sync: false
-      - key: TWILIO_AUTH_TOKEN
+      - key: META_TOKEN
         sync: false
-      - key: TWILIO_WHATSAPP_FROM
+      - key: META_APP_SECRET
         sync: false
-      - key: VERIFY_TOKEN
+      - key: META_VERIFY_TOKEN
         sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: VERIFY_TOKEN
         sync: false

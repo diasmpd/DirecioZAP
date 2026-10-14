@@ -801,9 +801,10 @@ class MensagensTab(ctk.CTkFrame):
             self.lbl_count.configure(text=f"Erro: {ex}", text_color=C_DANGER)
 
     def _download_excel(self):
-        token = env.get("VERIFY_TOKEN", "")
-        if not token:
-            messagebox.showerror("Erro", "VERIFY_TOKEN não configurado.")
+        """Gera a planilha direto do banco — funciona com o bot local, na nuvem ou parado."""
+        sb = db_from_env()
+        if not sb:
+            messagebox.showerror("Erro", "Banco de dados não configurado.")
             return
         dest = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
@@ -813,18 +814,14 @@ class MensagensTab(ctk.CTkFrame):
         if not dest:
             return
         try:
-            r = requests.get(
-                f"http://localhost:3000/exportar?token={token}", timeout=10
-            )
-            if r.status_code == 404:
+            from excel_writer import gerar_excel
+            cadastros = sb.get_cadastros()
+            if not cadastros:
                 messagebox.showinfo("Aviso", "Nenhum cadastro salvo ainda.")
                 return
-            r.raise_for_status()
             with open(dest, "wb") as f:
-                f.write(r.content)
-            messagebox.showinfo("Sucesso", f"Arquivo salvo em:\n{dest}")
-        except requests.ConnectionError:
-            messagebox.showerror("Erro", "Bot não está em execução. Inicie o bot primeiro.")
+                f.write(gerar_excel(cadastros, sb.get_todas_perguntas()))
+            messagebox.showinfo("Sucesso", f"{len(cadastros)} cadastro(s) salvo(s) em:\n{dest}")
         except Exception as ex:
             messagebox.showerror("Erro", str(ex))
 
@@ -910,6 +907,14 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
                      text="  Limitação: sandbox não envia para números brasileiros (+55)",
                      font=F_SMALL, text_color=C_ACCENT).pack(side="left")
 
+        # Bot na nuvem
+        c_cloud = self._card("Bot na nuvem (Render)")
+        self.e_bot_url, _ = self._field(
+            c_cloud, "URL do bot no Render (ex: https://direciozap-bot.onrender.com) — vazio = bot local")
+        ctk.CTkLabel(c_cloud, text="Com a URL preenchida, o Diagnóstico confere o bot na nuvem e a tarefa "
+                     "\"DirecioZAP Avisos\" o mantém acordado.",
+                     font=F_SMALL, text_color=C_MUTED).pack(anchor="w", padx=18, pady=(0, 16))
+
         # ngrok
         c_ng = self._card("ngrok (tunelamento público)")
         self.e_ngrok_token, _ = self._field(c_ng, "Auth Token do ngrok (opcional)")
@@ -993,6 +998,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "DATABASE_URL": self.e_db_url,
             "VERIFY_TOKEN": self.e_verify,
             "NOTIFY_EMAIL": self.e_notify,
+            "BOT_URL": self.e_bot_url,
         }
         for key, entry in mapping.items():
             val = cfg.get(key, "")
@@ -1017,6 +1023,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "DATABASE_URL": self.e_db_url.get().strip(),
             "VERIFY_TOKEN": self.e_verify.get().strip(),
             "NOTIFY_EMAIL": self.e_notify.get().strip(),
+            "BOT_URL": self.e_bot_url.get().strip(),
         }
         updates = {k: v for k, v in updates.items() if v}
         env.save(updates)

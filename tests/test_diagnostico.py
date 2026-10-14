@@ -88,3 +88,24 @@ def test_B_rede_bloqueada_vira_checagem_clara_sem_token(monkeypatch):
     rede = [r for r in res if r.nome == "Acesso à Meta pela rede"]
     assert len(rede) == 1 and rede[0].status == ERRO and "NÃO consegue responder" in rede[0].detalhe
     assert all("SEGREDO" not in r.detalhe for r in res)
+
+
+def test_A_modo_nuvem_rede_bloqueada_vira_aviso_e_confere_bot_na_nuvem(monkeypatch):
+    def bloqueado(*a, **k):
+        raise diagnostico.requests.exceptions.SSLError("x")
+    monkeypatch.setattr(diagnostico.requests, "get", bloqueado)
+    monkeypatch.setattr(diagnostico, "checar_banco", lambda cfg: diagnostico.Checagem("Banco de dados", OK, ""))
+    nuvem = MagicMock(return_value=diagnostico.Checagem("Bot na nuvem", OK, ""))
+    monkeypatch.setattr(diagnostico, "checar_bot_nuvem", nuvem)
+    monkeypatch.setattr(diagnostico, "checar_bot_local", MagicMock(side_effect=AssertionError("não deveria")))
+    res = diagnostico.executar({**CFG, "BOT_URL": "https://direciozap-bot.onrender.com"})
+    rede = next(r for r in res if r.nome == "Acesso à Meta pela rede")
+    assert rede.status == AVISO and "nuvem não é afetado" in rede.detalhe
+    nuvem.assert_called_once_with("https://direciozap-bot.onrender.com")
+
+
+def test_A_webhook_esperado_usa_bot_url(graph):
+    graph["app1/subscriptions"] = (200, {"data": [{"object": "whatsapp_business_account", "active": True,
+        "callback_url": "https://direciozap-bot.onrender.com/webhook", "fields": [{"name": "messages"}]}]})
+    c = diagnostico.checar_webhook({**CFG, "BOT_URL": "https://direciozap-bot.onrender.com/"}, "app1")
+    assert c.status == OK

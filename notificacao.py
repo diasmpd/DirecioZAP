@@ -1,13 +1,13 @@
 """Aviso por e-mail (Outlook) a cada cadastro concluído.
 
-Usa o Outlook desktop já configurado neste PC (via COM), então não precisa de senha SMTP
-nem de liberação da TI. O envio roda numa thread à parte: o fornecedor recebe a resposta
-na hora e uma falha no e-mail nunca afeta o cadastro, que já está salvo no banco.
+O bot roda na nuvem, onde não há Outlook; quem envia os avisos é o avisos_pc.py, rodando
+neste PC de tempos em tempos: lê no banco os cadastros com notificado_em vazio, envia pelo
+Outlook desktop (via COM — sem senha SMTP nem liberação da TI) e marca cada um como avisado.
+Se o PC estiver desligado, os avisos ficam pendentes e saem na próxima execução.
 Destinatários em NOTIFY_EMAIL (separados por vírgula ou ponto e vírgula); vazio = desligado.
 """
 import html
 import re
-import threading
 from datetime import datetime, timedelta, timezone
 
 from log_setup import get_logger, mascarar
@@ -21,7 +21,7 @@ def destinatarios(valor: str | None) -> list[str]:
     return [e.strip() for e in re.split(r"[;,]", valor or "") if e.strip()]
 
 
-def montar_email(phone: str, dados: dict, perguntas: list[dict]) -> tuple[str, str]:
+def montar_email(phone: str, dados: dict, perguntas: list[dict], criado_em: str | None = None) -> tuple[str, str]:
     """(assunto, corpo HTML). Tudo que veio do fornecedor é escapado antes de ir para o HTML."""
     labels = {p["campo"]: p.get("label") or p["campo"] for p in perguntas}
     nome = dados.get("razao_social") or "(sem razão social)"
@@ -32,7 +32,11 @@ def montar_email(phone: str, dados: dict, perguntas: list[dict]) -> tuple[str, s
         f"<td style='padding:4px 0'>{html.escape(str(v))}</td></tr>"
         for c, v in dados.items()
     )
-    quando = datetime.now(_FUSO_BRASILIA).strftime("%d/%m/%Y %H:%M")
+    try:
+        momento = datetime.fromisoformat(criado_em) if criado_em else datetime.now(timezone.utc)
+    except ValueError:
+        momento = datetime.now(timezone.utc)
+    quando = momento.astimezone(_FUSO_BRASILIA).strftime("%d/%m/%Y %H:%M")
     corpo = (
         "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
         "<p>Um fornecedor concluiu o cadastro pelo WhatsApp.</p>"
@@ -63,21 +67,24 @@ def enviar_outlook(para: list[str], assunto: str, corpo_html: str) -> None:
         pythoncom.CoUninitialize()
 
 
-def notificar_novo_cadastro(phone: str, dados: dict, perguntas: list[dict]) -> threading.Thread | None:
-    from config import settings
-
-    para = destinatarios(settings.NOTIFY_EMAIL)
-    if not para:
-        return None
-    assunto, corpo = montar_email(phone, dados, perguntas)
-
-    def _enviar():
+def enviar_pendentes(db, para: list[str], enviar=None) -> tuple[int, int]:
+    """Envia um e-mail por cadastro ainda não avisado e marca os enviados.
+    Retorna (enviados, falhas). Para no primeiro erro do Outlook — se ele está fechado ou
+    sem perfil, insistir nos demais só repetiria o erro; eles saem na próxima execução."""
+    enviar = enviar or enviar_outlook
+    pendentes = db.get_cadastros_sem_aviso()
+    if not pendentes or not para:
+        return 0, 0
+    perguntas = db.get_todas_perguntas()
+    enviados = 0
+    for c in pendentes:
+        assunto, corpo = montar_email(c["phone"], c.get("dados") or {}, perguntas, c.get("criado_em"))
         try:
-            enviar_outlook(para, assunto, corpo)
-            log.info("Aviso de cadastro de %s enviado para %s.", mascarar(phone), ", ".join(para))
+            enviar(para, assunto, corpo)
         except Exception:
-            log.exception("Falha ao enviar aviso por e-mail do cadastro de %s", mascarar(phone))
-
-    t = threading.Thread(target=_enviar, name="aviso-email", daemon=True)
-    t.start()
-    return t
+            log.exception("Falha ao enviar aviso do cadastro de %s", mascarar(c["phone"]))
+            return enviados, len(pendentes) - enviados
+        db.marcar_notificado(c["id"])
+        enviados += 1
+        log.info("Aviso do cadastro de %s enviado para %s.", mascarar(c["phone"]), ", ".join(para))
+    return enviados, 0

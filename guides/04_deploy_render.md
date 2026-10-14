@@ -1,164 +1,63 @@
-# Guia 04 — Deploy no Render
+# Guia 04 — Bot na nuvem (Render)
 
-> Tempo estimado: 15–20 minutos  
-> Pré-requisitos: conta no [render.com](https://render.com) (gratuita) e repositório Git
+> Tempo estimado: 20 minutos
+> Pré-requisitos: conta gratuita no [render.com](https://render.com) (entre com o GitHub) e o
+> repositório `diasmpd/DirecioZAP` no GitHub
 
----
+## Por que na nuvem
 
-## Estrutura do Deploy
+A rede corporativa (FortiGate) bloqueia `graph.facebook.com`: com o bot no PC da empresa, as
+mensagens chegam, mas as respostas não saem. No Render o bot não depende da rede da empresa,
+do PC ligado nem do ngrok.
 
-| Componente | Onde roda | Custo |
-|---|---|---|
-| Backend Python (FastAPI) | Render Free (`direciozap-bot`) | Gratuito |
-| Evolution API | Render Free Docker (`evolution-direciozap`) | Gratuito |
-| PostgreSQL (sessão WA) | Render Free (`evolution-db`, expira 23/07/2026) | Gratuito |
-| Supabase (sessões bot) | Supabase Cloud | Gratuito |
-| Excel | Disco efêmero Render | Gratuito (exportar antes de redeploy) |
+O que continua no PC: os **avisos por e-mail** (o Outlook só existe no PC). A tarefa
+"DirecioZAP Avisos" roda a cada 5 minutos, envia os avisos pendentes e mantém o bot do Render
+acordado — o plano gratuito adormece após 15 min sem requisições, e a primeira resposta
+levaria 30–60 s. Com o PC desligado, o bot continua respondendo (talvez com essa demora na
+primeira mensagem) e os avisos saem quando o PC voltar.
 
-> **Importante:** a Evolution API usa `Dockerfile.evolution` (raiz do repo) com patch Baileys
-> para compatibilidade com o protocolo WhatsApp 2026. Ver `patch_baileys.js`.
+## Passo 1 — Criar o serviço
 
----
+1. Em [dashboard.render.com](https://dashboard.render.com), clique em **New → Blueprint**.
+2. Conecte o GitHub e escolha o repositório **diasmpd/DirecioZAP**. O Render lê o `render.yaml`.
+3. Ele pede os valores secretos. Copie cada um do `.env` deste PC:
+   `META_PHONE_NUMBER_ID`, `META_TOKEN`, `META_APP_SECRET`, `META_VERIFY_TOKEN`,
+   `DATABASE_URL`, `VERIFY_TOKEN`.
+4. Clique em **Apply**. O primeiro deploy leva uns 3–5 minutos.
+5. Copie a URL do serviço (ex: `https://direciozap-bot.onrender.com`). Abra no navegador:
+   deve aparecer `{"status":"ok"}`.
 
-## Passo 1 — Preparar o Repositório Git
+## Passo 2 — Apontar o webhook da Meta para o Render
 
-```bash
-# Inicializar git no projeto
-cd C:/projetos/DirecioZap
-git init
-git add .
-git commit -m "feat: implementação inicial DirecioZap Bot"
+`developers.facebook.com` é bloqueado na rede da empresa: faça este passo pelo celular
+(4G) ou com o PC no roteador do celular.
 
-# Criar repositório no GitHub e fazer push
-# (via GitHub CLI ou interface web)
-gh repo create direciozap --public --source=. --push
-```
+1. developers.facebook.com → app **DirecioZAP** → **WhatsApp → Configuração** → Webhook → **Editar**.
+2. **URL de callback:** `https://<sua-url>.onrender.com/webhook`
+3. **Token de verificação:** o mesmo `META_VERIFY_TOKEN` do `.env`.
+4. **Verificar e salvar**. Confira que o campo **messages** continua assinado.
 
-Crie um `.gitignore` antes do commit:
+## Passo 3 — Ligar os avisos no PC
 
-```
-.env
-data/fornecedores.xlsx
-__pycache__/
-*.pyc
-.pytest_cache/
-```
+1. No Manager, aba **Configurações → Bot na nuvem (Render)**, cole a URL do Render e salve.
+2. Rode, na pasta do projeto:
 
----
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File register_task.ps1
+   ```
 
-## Passo 2 — Criar o Serviço no Render
+   Isso remove a tarefa do bot local ("DirecioZAP Bot", com o ngrok) e registra
+   "DirecioZAP Avisos".
+3. Mande "oi" para o número do bot e conclua um cadastro de teste: a resposta vem do Render
+   e o e-mail chega em até 5 minutos.
 
-1. Acesse [render.com](https://render.com) → **"New +"** → **"Web Service"**
-2. Conecte sua conta GitHub se ainda não conectou
-3. Selecione o repositório `direciozap`
-4. Configure:
-   - **Name:** `direciozap-bot`
-   - **Region:** Oregon (US West) ou Frankfurt — qualquer um
-   - **Branch:** `main`
-   - **Runtime:** Python 3
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Clique em **"Create Web Service"**
+## Atualizações
 
-> O `render.yaml` na raiz do projeto configura isso automaticamente se você usar **"Infrastructure as Code"** no Render. Mas criar manualmente também funciona.
+Cada `git push` na branch `main` do fork faz o Render publicar a nova versão sozinho.
 
----
+## Problemas
 
-## Passo 3 — Configurar Variáveis de Ambiente no Render
-
-Após criar o serviço:
-
-1. Vá em **"Environment"** no menu do serviço
-2. Clique em **"Add Environment Variable"** para cada variável:
-
-```
-EVOLUTION_API_URL  = https://sua-evolution-api.com
-EVOLUTION_API_KEY  = sua_chave
-EVOLUTION_INSTANCE = direciozap
-VERIFY_TOKEN       = seu_token_seguro
-SUPABASE_URL       = https://XXXX.supabase.co
-SUPABASE_KEY       = eyJhbGciOiJI...
-```
-
-3. Clique em **"Save Changes"** — o Render fará um redeploy automaticamente.
-
----
-
-## Passo 4 — Aguardar o Deploy
-
-O primeiro build demora 2–5 minutos. Acompanhe em **"Logs"**.
-
-Quando aparecer:
-```
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:XXXXX
-```
-
-O serviço está no ar. Teste:
-```
-https://direciozap-bot.onrender.com/
-# Deve retornar: {"status": "ok"}
-```
-
----
-
-## Passo 5 — Configurar o Webhook na Evolution API
-
-Agora que o backend tem URL pública, configure o webhook:
-
-```bash
-curl -X POST https://sua-evolution-api.com/webhook/set/direciozap \
-  -H "apikey: SUA_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "webhook": {
-      "enabled": true,
-      "url": "https://direciozap-bot.onrender.com/webhook",
-      "events": ["MESSAGES_UPSERT"]
-    }
-  }'
-```
-
----
-
-## Passo 6 — Testar em Produção
-
-1. Envie uma mensagem WhatsApp para o número conectado na Evolution API
-2. O bot deve responder com a mensagem de boas-vindas
-3. Verifique os logs no painel Render em tempo real
-
----
-
-## Considerações sobre o Render Free
-
-### Hibernação (15 min)
-O Render Free hiberna o processo após 15 minutos sem requisições. A próxima mensagem vai demorar ~30 segundos para despertar o serviço.
-
-**Mitigação:** Configure um serviço de "keep-alive" gratuito:
-- [UptimeRobot](https://uptimerobot.com): ping a cada 5 minutos (gratuito)
-  - URL para monitorar: `https://direciozap-bot.onrender.com/`
-  - Tipo: HTTP(S)
-  - Intervalo: 5 minutos
-
-### Disco efêmero
-O arquivo `fornecedores.xlsx` é perdido em cada redeploy ou reinício.
-
-**Solução para v1.0:** Baixe o arquivo antes de fazer redeploy:
-```bash
-curl "https://direciozap-bot.onrender.com/exportar?token=SEU_TOKEN" \
-  -o fornecedores_backup_$(date +%Y%m%d).xlsx
-```
-
-**Solução futura:** Integrar com Google Drive ou Supabase Storage.
-
-### Free tier limits
-- **750 horas/mês** de compute — suficiente para um serviço 24/7
-- **512 MB RAM** — mais que suficiente para este bot
-- **Sem domínio customizado** no Free — use `.onrender.com`
-
----
-
-## Próximo passo
-
-Com o deploy funcionando, configure o link do LinkedIn no  
-[Guia 05 — Link do LinkedIn](./05_linkedin_link.md)
+- **Bot não responde:** painel do Render → serviço → **Logs**. O Diagnóstico do Manager confere
+  a URL do Render, o banco e os avisos (as checagens da Meta só funcionam fora da rede da empresa).
+- **E-mails não chegam:** `logs\direciozap.log` neste PC e o status da tarefa no Agendador de
+  Tarefas do Windows.

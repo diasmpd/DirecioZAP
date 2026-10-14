@@ -144,8 +144,9 @@ def checar_webhook(cfg: dict, app_id: str | None) -> Checagem:
     if not sub:
         return Checagem("Webhook do app", ERRO, "Nenhum webhook do WhatsApp configurado no app.")
     campos = {f.get("name") for f in sub.get("fields", [])}
+    bot_url = cfg.get("BOT_URL", "").strip().rstrip("/")
     dominio = cfg.get("NGROK_DOMAIN", "").strip()
-    esperado = f"https://{dominio}/webhook" if dominio else None
+    esperado = f"{bot_url}/webhook" if bot_url else f"https://{dominio}/webhook" if dominio else None
     problemas = []
     if "messages" not in campos:
         problemas.append("campo 'messages' não assinado")
@@ -183,6 +184,39 @@ def checar_tunel(cfg: dict) -> Checagem:
                     f"https://{dominio} respondeu HTTP {r.status_code} — ngrok parado ou em outro PC.")
 
 
+def checar_bot_nuvem(url: str) -> Checagem:
+    url = url.rstrip("/")
+    try:
+        r = requests.get(f"{url}/", timeout=90)  # 90 s: o plano gratuito do Render pode estar acordando
+    except requests.RequestException as ex:
+        return Checagem("Bot na nuvem", ERRO, f"{url} inacessível: {type(ex).__name__}. Veja os logs no painel do Render.")
+    if r.ok:
+        return Checagem("Bot na nuvem", OK, f"{url} respondendo.")
+    return Checagem("Bot na nuvem", ERRO, f"{url} respondeu HTTP {r.status_code}. Veja os logs no painel do Render.")
+
+
+def checar_avisos_pendentes(cfg: dict) -> Checagem | None:
+    """Cadastro sem aviso há mais de 15 min = a tarefa "DirecioZAP Avisos" não está rodando
+    ou o Outlook falhou (detalhes em logs/direciozap.log)."""
+    url = cfg.get("DATABASE_URL", "").strip()
+    if not url or not cfg.get("NOTIFY_EMAIL", "").strip():
+        return None
+    from datetime import datetime, timedelta, timezone
+    try:
+        from db import Database
+        pendentes = Database(url).get_cadastros_sem_aviso()
+    except Exception:
+        return None  # o problema de banco já aparece na checagem do banco
+    limite = datetime.now(timezone.utc) - timedelta(minutes=15)
+    atrasados = [c for c in pendentes if datetime.fromisoformat(c["criado_em"]) < limite]
+    if atrasados:
+        return Checagem("Avisos por e-mail", ERRO,
+                        f"{len(atrasados)} cadastro(s) sem aviso há mais de 15 min. A tarefa "
+                        "\"DirecioZAP Avisos\" está registrada? (register_task.ps1)")
+    return Checagem("Avisos por e-mail", OK,
+                    f"Nenhum aviso atrasado ({len(pendentes)} aguardando a próxima execução).")
+
+
 def checar_outlook(cfg: dict) -> Checagem | None:
     if not cfg.get("NOTIFY_EMAIL", "").strip():
         return None
@@ -201,8 +235,14 @@ def checar_outlook(cfg: dict) -> Checagem | None:
 
 def executar(cfg: dict) -> list[Checagem]:
     resultados = [checar_banco(cfg)]
+    bot_url = cfg.get("BOT_URL", "").strip()
     if (cfg.get("WHATSAPP_PROVIDER") or "").lower() == "meta":
         token, app_id = checar_token(cfg)
+        if token.nome == "Acesso à Meta pela rede" and bot_url:
+            # Bot na nuvem: o bloqueio é só desta rede, o bot não é afetado.
+            token = Checagem("Acesso à Meta pela rede", AVISO,
+                             "Esta rede bloqueia a Meta, então as checagens da Meta não podem ser "
+                             "feitas deste PC. O bot na nuvem não é afetado.")
         resultados.append(token)
         if token.nome != "Acesso à Meta pela rede":  # sem rede para a Meta, as demais também falham
             for checar in (lambda: checar_numero(cfg), lambda: checar_vinculo(cfg, app_id),
@@ -214,10 +254,13 @@ def executar(cfg: dict) -> list[Checagem]:
                     break
     else:
         resultados.append(Checagem("Provedor", AVISO, "Provedor Twilio: checagens da Meta puladas."))
-    resultados += [checar_bot_local(), checar_tunel(cfg)]
-    outlook = checar_outlook(cfg)
-    if outlook:
-        resultados.append(outlook)
+    if bot_url:
+        resultados.append(checar_bot_nuvem(bot_url))
+    else:
+        resultados += [checar_bot_local(), checar_tunel(cfg)]
+    for extra in (checar_avisos_pendentes(cfg), checar_outlook(cfg)):
+        if extra:
+            resultados.append(extra)
     return resultados
 
 

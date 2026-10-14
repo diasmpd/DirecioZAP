@@ -11,7 +11,7 @@ from fastapi.responses import PlainTextResponse, Response
 from config import settings
 from conversation import MSGS, ConversationManager
 from excel_writer import gerar_excel
-from db import delete_sessoes_expiradas, fechar as fechar_banco, get_cadastros, get_todas_perguntas
+from db import delete_sessoes_expiradas, fechar as fechar_banco, get_cadastros, get_todas_perguntas, init_schema
 from whatsapp import send_message
 from log_setup import configurar_logs, get_logger, mascarar
 
@@ -36,6 +36,11 @@ async def _limpar_sessoes_periodicamente():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    try:
+        # Cria tabelas/colunas que faltarem (ex: notificado_em) — no Render não há Manager.
+        await asyncio.to_thread(init_schema)
+    except Exception:
+        log.exception("Falha ao conferir o esquema do banco na inicialização")
     tarefa = asyncio.create_task(_limpar_sessoes_periodicamente())
     log.info("Bot iniciado (provedor: %s).", settings.WHATSAPP_PROVIDER)
     yield

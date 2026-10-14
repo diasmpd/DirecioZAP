@@ -380,17 +380,3 @@ class TestConfirmacaoFlexivel:
         manager.process("553195971053", "S")
         mock_session_module["save_cadastro"].assert_called_once_with("5531995971053", self.DADOS)
 
-
-def test_A_confirmacao_dispara_aviso_com_telefone_normalizado(manager, mock_session_module, monkeypatch):
-    aviso = MagicMock()
-    monkeypatch.setattr("conversation.notificar_novo_cadastro", aviso)
-    dados = TestConfirmacaoFlexivel.DADOS
-    mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
-    manager.process("553195971053", "S")
-    assert aviso.call_args.args[:2] == ("5531995971053", dados)
-
-
-def test_B_falha_no_aviso_nao_afeta_confirmacao(manager, mock_session_module, monkeypatch):
-    monkeypatch.setattr("conversation.notificar_novo_cadastro", MagicMock(side_effect=RuntimeError("x")))
-    mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", TestConfirmacaoFlexivel.DADOS)
-    assert MSGS["SUCESSO"] in manager.process(PHONE, "S")

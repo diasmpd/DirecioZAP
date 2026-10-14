@@ -252,7 +252,12 @@ Documentacao completa embutida no aplicativo.
 
 ---
 
-## Rodando em Segundo Plano (sem o Manager)
+## Bot na Nuvem (Render) — modo recomendado
+
+A rede da empresa bloqueia a API da Meta, entao o bot roda no Render e o PC so envia os avisos
+por e-mail (tarefa "DirecioZAP Avisos"). Passo a passo em [guides/04_deploy_render.md](guides/04_deploy_render.md).
+
+## Rodando em Segundo Plano no PC (bot local)
 
 Para o bot responder sem precisar deixar o Manager aberto, registre a tarefa agendada:
 

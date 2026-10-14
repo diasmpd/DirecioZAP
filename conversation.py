@@ -11,7 +11,6 @@ from db import (
     update_session,
 )
 from log_setup import get_logger, mascarar
-from notificacao import notificar_novo_cadastro
 from validators import (
     normalizar_cnpj,
     normalizar_contato,
@@ -345,10 +344,6 @@ class ConversationManager:
                     delete_session(phone)
                 except Exception:
                     log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
-                try:
-                    notificar_novo_cadastro(telefone, dados, perguntas)
-                except Exception:
-                    log.exception("Falha ao preparar aviso do cadastro de %s", mascarar(phone))
                 return MSGS["SUCESSO"]
             if resp == "NAO":
                 delete_session(phone)

@@ -1,6 +1,8 @@
 """
 Testes — notificacao.py (aviso por e-mail via Outlook; o envio real é bloqueado no conftest)
 """
+from unittest.mock import MagicMock
+
 import notificacao
 from tests.conftest import SAMPLE_PERGUNTAS
 
@@ -22,23 +24,44 @@ def test_A_email_usa_labels_e_escapa_html():
     assert "+5531995971053" in corpo
 
 
-def test_A_sem_destinatario_nao_envia(monkeypatch, bloquear_outlook):
-    monkeypatch.setattr("config.settings.NOTIFY_EMAIL", "")
-    assert notificacao.notificar_novo_cadastro("55", {}, SAMPLE_PERGUNTAS) is None
-    bloquear_outlook.assert_not_called()
+class FakeDB:
+    def __init__(self, pendentes):
+        self.pendentes = pendentes
+        self.marcados = []
+
+    def get_cadastros_sem_aviso(self):
+        return [c for c in self.pendentes if c["id"] not in self.marcados]
+
+    def get_todas_perguntas(self):
+        return SAMPLE_PERGUNTAS
+
+    def marcar_notificado(self, id_):
+        self.marcados.append(id_)
 
 
-def test_A_com_destinatario_envia_em_thread(monkeypatch, bloquear_outlook):
-    monkeypatch.setattr("config.settings.NOTIFY_EMAIL", "a@x.com")
-    t = notificacao.notificar_novo_cadastro("5531995971053", {"razao_social": "ACME"}, SAMPLE_PERGUNTAS)
-    t.join(5)
-    para, assunto, _ = bloquear_outlook.call_args.args
-    assert para == ["a@x.com"] and "ACME" in assunto
+PENDENTES = [
+    {"id": "a", "phone": "5531995971053", "dados": {"razao_social": "ACME"}, "criado_em": "2026-10-14T13:00:00+00:00"},
+    {"id": "b", "phone": "5531988887777", "dados": {"razao_social": "BETA"}, "criado_em": "2026-10-14T13:05:00+00:00"},
+]
 
 
-def test_B_falha_no_outlook_nao_propaga(monkeypatch, bloquear_outlook):
-    monkeypatch.setattr("config.settings.NOTIFY_EMAIL", "a@x.com")
-    bloquear_outlook.side_effect = RuntimeError("Outlook fechado")
-    t = notificacao.notificar_novo_cadastro("55", {}, SAMPLE_PERGUNTAS)
-    t.join(5)  # a exceção fica no log, não sobe
-    assert not t.is_alive()
+def test_A_envia_e_marca_cada_pendente():
+    db, enviar = FakeDB(PENDENTES), MagicMock()
+    assert notificacao.enviar_pendentes(db, ["a@x.com"], enviar) == (2, 0)
+    assert db.marcados == ["a", "b"]
+    assert "ACME" in enviar.call_args_list[0].args[1]
+    assert "14/10/2026 10:00" in enviar.call_args_list[0].args[2]  # horário do cadastro, em Brasília
+
+
+def test_B_outlook_falha_para_e_deixa_pendente():
+    db = FakeDB(PENDENTES)
+    enviar = MagicMock(side_effect=[None, RuntimeError("Outlook fechado")])
+    assert notificacao.enviar_pendentes(db, ["a@x.com"], enviar) == (1, 1)
+    assert db.marcados == ["a"]  # "b" sai na próxima execução
+
+
+def test_B_sem_destinatario_nao_envia_nem_marca():
+    db, enviar = FakeDB(PENDENTES), MagicMock()
+    assert notificacao.enviar_pendentes(db, [], enviar) == (0, 0)
+    enviar.assert_not_called()
+    assert db.marcados == []
