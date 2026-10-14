@@ -1,0 +1,65 @@
+POLÍTICA DE PRIVACIDADE — DirecioZAP
+
+Última atualização: 14 de outubro de 2026
+
+1. Quem somos
+
+O DirecioZAP é um atendimento automatizado por WhatsApp usado pela área de Suprimentos da Direcional Engenharia S.A. para receber cadastros de fornecedores e prestadores de serviço interessados em atender as obras da empresa.
+
+Esta política explica quais dados coletamos por meio do DirecioZAP, para que os usamos e quais são os seus direitos, em conformidade com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018 — LGPD).
+
+2. Quais dados coletamos
+
+Quando você conversa com o DirecioZAP, coletamos:
+
+- O número de telefone do WhatsApp usado na conversa;
+- As respostas que você envia durante o cadastro, como razão social, CNPJ, nome e dados de contato (telefone e/ou e-mail), serviços oferecidos e estados de atuação;
+- A data e a hora do cadastro.
+
+Não solicitamos dados pessoais sensíveis (como origem racial, saúde, religião ou biometria). Pedimos que você não envie esse tipo de informação pela conversa.
+
+3. Para que usamos os dados
+
+Os dados são usados exclusivamente para:
+
+- Registrar sua empresa no cadastro de fornecedores da área de Suprimentos;
+- Permitir que as equipes de obra e de Suprimentos entrem em contato com você sobre possíveis contratações de serviços ou fornecimento de materiais.
+
+Não vendemos seus dados e não os usamos para publicidade.
+
+4. Base legal
+
+O tratamento é feito com base na execução de procedimentos preliminares relacionados a um possível contrato, a pedido do próprio titular (art. 7º, V, da LGPD), e no legítimo interesse da Direcional em manter um cadastro de fornecedores (art. 7º, IX, da LGPD).
+
+5. Com quem os dados são compartilhados
+
+Para que o atendimento funcione, os dados passam pelos seguintes serviços:
+
+- WhatsApp / Meta Platforms, que transmite as mensagens;
+- Neon, provedor de banco de dados em nuvem onde os cadastros ficam armazenados. Esse provedor pode manter servidores fora do Brasil; nesse caso, a transferência internacional segue o art. 33 da LGPD.
+
+Internamente, os dados ficam disponíveis apenas para as equipes da Direcional envolvidas na contratação de fornecedores.
+
+6. Por quanto tempo guardamos os dados
+
+- Respostas de um cadastro não concluído deixam de ser usadas após 24 horas sem interação e são apagadas quando você volta a conversar com o DirecioZAP. Você também pode apagá-las na hora digitando CANCELAR.
+- Cadastros concluídos são mantidos enquanto forem necessários para a finalidade de cadastro de fornecedores, ou até que você solicite a exclusão.
+
+7. Seus direitos
+
+Você pode, a qualquer momento, solicitar:
+
+- Confirmação de que tratamos seus dados e acesso a eles;
+- Correção de dados incompletos, inexatos ou desatualizados;
+- Exclusão dos seus dados do cadastro;
+- Informações sobre com quem os dados foram compartilhados.
+
+Durante a conversa, você também pode digitar CANCELAR para encerrar o atendimento a qualquer momento.
+
+8. Como pedir a exclusão dos seus dados ou entrar em contato
+
+Envie um e-mail para suprimentosdigital@direcional.com.br informando o número de WhatsApp usado no cadastro e o que deseja (acesso, correção ou exclusão). Responderemos no prazo previsto pela LGPD.
+
+9. Alterações nesta política
+
+Esta política pode ser atualizada. A data da última atualização fica sempre no topo desta página.
