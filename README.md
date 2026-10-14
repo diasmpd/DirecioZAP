@@ -1,6 +1,6 @@
 # DirecioZAP
 
-Bot de WhatsApp para coleta de cadastros de fornecedores. Conduz conversas automatizadas, coleta e valida respostas campo a campo, salva os dados no Supabase e exporta para Excel.
+Bot de WhatsApp para coleta de cadastros de fornecedores. Conduz conversas automatizadas, coleta e valida respostas campo a campo, salva os dados no banco de dados (Neon) e exporta para Excel.
 
 ---
 
@@ -9,7 +9,7 @@ Bot de WhatsApp para coleta de cadastros de fornecedores. Conduz conversas autom
 ```
 Usuario WhatsApp  →  Twilio/Meta  →  ngrok (tunel)  →  Bot FastAPI (local)
                                                             ↓
-                                                       Supabase (sessoes, cadastros)
+                                                       Neon/Postgres (sessoes, cadastros)
                                                          ↓
                                                        Excel gerado sob demanda (/exportar)
 ```
@@ -18,7 +18,7 @@ O administrador usa o **DirecioZAP Manager** (aplicativo desktop) para:
 - Gerenciar as perguntas do formulario
 - Monitorar conversas e cadastros
 - Baixar o Excel com os dados coletados
-- Configurar credenciais (Twilio ou Meta, ngrok, Supabase)
+- Configurar credenciais (Twilio ou Meta, ngrok, banco de dados (Neon))
 
 ---
 
@@ -30,7 +30,7 @@ Se voce recebeu a pasta `DirecioZAP_Manager` pronta (nao vai mexer no codigo), e
 2. **Nao precisa ser administrador do Windows.** O aplicativo roda com uma conta comum.
 3. Na primeira vez que abrir o `DirecioZAP_Manager.exe`, o Windows pode mostrar uma tela azul **"O Windows protegeu o seu PC"**. Isso e normal para programas novos sem assinatura digital paga — clique em **"Mais informacoes"** e depois em **"Executar assim mesmo"**.
 4. Ao clicar em **"Iniciar Bot"** pela primeira vez, o Firewall do Windows pode perguntar se permite acesso a rede. Pode clicar em **"Cancelar"** sem problema — o aplicativo continua funcionando normalmente (a conexao publica passa pelo ngrok, que nao depende dessa permissao).
-5. Va na aba **Configuracoes**, preencha as credenciais (Twilio ou Meta, Supabase, ngrok) e clique em **"Salvar Configuracoes"**.
+5. Va na aba **Configuracoes**, preencha as credenciais (Twilio ou Meta, banco de dados (Neon), ngrok) e clique em **"Salvar Configuracoes"**.
 6. Volte para a barra lateral e clique em **"Iniciar Bot"**. A URL publica aparece embaixo do botao — cole essa URL no painel do Twilio/Meta.
 7. Duvidas sobre onde conseguir cada credencial? A aba **Tutorial**, dentro do proprio aplicativo, tem o passo a passo completo.
 
@@ -43,7 +43,7 @@ Se voce recebeu a pasta `DirecioZAP_Manager` pronta (nao vai mexer no codigo), e
 | Python | 3.11+ | Apenas para rodar/buildar a partir do codigo-fonte |
 | ngrok | qualquer | So precisa instalar manualmente se rodar `python manager_app.py` direto; o .exe ja vem com o ngrok embutido |
 | Git | qualquer | Para clonar o repositorio |
-| Conta Supabase | gratuita | supabase.com |
+| Conta Neon | gratuita | neon.tech |
 | Conta Twilio | gratuita (sandbox) | twilio.com |
 
 ---
@@ -57,8 +57,8 @@ DirecioZAP/
 ├── config.py               # Configuracoes via .env (pydantic-settings)
 ├── conversation.py         # Motor de conversa dinamico
 ├── whatsapp.py             # Envio de mensagens via Twilio
-├── supabase_session.py     # Acesso ao banco (sessoes, perguntas, cadastros)
-├── excel_writer.py         # Gera o .xlsx a partir dos cadastros do Supabase
+├── db.py                   # Acesso ao banco Postgres/Neon (sessoes, perguntas, cadastros)
+├── excel_writer.py         # Gera o .xlsx a partir dos cadastros do banco de dados (Neon)
 ├── validators.py           # Validacao de CNPJ, telefone, e-mail, estados
 ├── requirements.txt        # Dependencias do bot
 ├── requirements_manager.txt # Dependencias do aplicativo desktop
@@ -114,9 +114,8 @@ META_VERIFY_TOKEN=coloque_aqui
 NGROK_AUTH_TOKEN=coloque_aqui
 NGROK_DOMAIN=                    # opcional: dominio estatico ngrok
 
-# Supabase
-SUPABASE_URL=https://xxxxxxxxx.supabase.co
-SUPABASE_KEY=coloque_aqui
+# Banco de dados (Neon)
+DATABASE_URL=postgresql://usuario:senha@ep-xxxx.neon.tech/neondb?sslmode=require
 
 # Seguranca
 VERIFY_TOKEN=gere_um_token_seguro
@@ -124,59 +123,17 @@ VERIFY_TOKEN=gere_um_token_seguro
 
 ---
 
-## Configurando o Supabase
+## Configurando o banco de dados (Neon)
 
-1. Acesse [supabase.com](https://supabase.com) e crie uma conta gratuita.
-2. Crie um novo projeto.
-3. No menu lateral, acesse **SQL Editor** e execute o script abaixo:
+1. Acesse [neon.tech](https://neon.tech) e crie uma conta gratuita.
+2. Crie um projeto (regiao AWS Sao Paulo, se disponivel).
+3. No painel do projeto, clique em **Connect** e copie a connection string (`postgresql://...?sslmode=require`).
+4. No Manager, aba **Configuracoes**, cole em **Banco de dados (Neon)** e clique em **Testar Conexao**.
+   O teste cria as tabelas (`perguntas`, `cadastros`, `sessions`) e as perguntas padrao, se ainda nao existirem —
+   nao e preciso rodar SQL manualmente. O esquema completo esta em `db.py` (`SCHEMA_SQL`).
 
-```sql
-CREATE TABLE perguntas (
-  id        SERIAL PRIMARY KEY,
-  ordem     INTEGER NOT NULL,
-  campo     TEXT NOT NULL UNIQUE,
-  label     TEXT NOT NULL,
-  pergunta  TEXT NOT NULL,
-  tipo      TEXT NOT NULL DEFAULT 'texto',
-  msg_erro  TEXT,
-  ativo     BOOLEAN NOT NULL DEFAULT TRUE
-);
-
-INSERT INTO perguntas (ordem, campo, label, pergunta, tipo, msg_erro) VALUES
-  (1, 'razao_social', 'Razao Social',
-   'Qual e a Razao Social da sua empresa?', 'texto', NULL),
-  (2, 'cnpj', 'CNPJ',
-   'Me informe o CNPJ da empresa (com ou sem pontuacao):', 'cnpj',
-   'CNPJ invalido. Informe um CNPJ com 14 digitos:'),
-  (3, 'contato', 'Contato',
-   'Qual o contato principal? (telefone ou e-mail):', 'contato',
-   'Formato invalido. Informe um telefone ou e-mail valido:'),
-  (4, 'servico', 'Servico',
-   'Que tipo de servico sua empresa oferece?', 'texto', NULL),
-  (5, 'estados', 'Estados',
-   'Em quais estados voces atuam? (Ex: MG, SP, RJ):', 'estados',
-   'Siglas invalidas. Use as siglas dos estados (ex: MG, SP, RJ):');
-
-CREATE TABLE cadastros (
-  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone     TEXT NOT NULL,
-  dados     JSONB NOT NULL,
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE sessions (
-  phone         TEXT PRIMARY KEY,
-  state         TEXT NOT NULL DEFAULT 'SAUDACAO',
-  dados         JSONB NOT NULL DEFAULT '{}',
-  tentativas    JSONB NOT NULL DEFAULT '{}',
-  criado_em     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-4. Em **Project Settings > API**, copie:
-   - **Project URL** → `SUPABASE_URL` no .env
-   - **anon public key** → `SUPABASE_KEY` no .env
+> O plano gratuito do Neon suspende o banco apos alguns minutos sem uso; a primeira mensagem depois disso
+> demora um pouco mais (o banco "acorda" sozinho). Nao e preciso fazer nada.
 
 ---
 
@@ -235,7 +192,7 @@ python manager_app.py
 ### Abas
 
 #### Perguntas
-Gerencia o formulario de cadastro. As perguntas sao armazenadas no Supabase e lidas pelo bot em tempo real.
+Gerencia o formulario de cadastro. As perguntas sao armazenadas no banco de dados (Neon) e lidas pelo bot em tempo real.
 
 - **Adicionar**: cria uma nova pergunta
 - **Editar**: modifica uma pergunta existente
@@ -278,7 +235,7 @@ Configura credenciais de todos os servicos.
 
 - Selecione o provedor (Twilio ou Meta)
 - Preencha os campos correspondentes
-- Configure ngrok e Supabase
+- Configure ngrok e banco de dados (Neon)
 - Defina o Verify Token (qualquer string segura; protege o endpoint `/exportar`)
 - Clique em "Salvar Configuracoes"
 
@@ -316,7 +273,7 @@ ngrok http 3000
 4. Se a resposta for invalida, o bot rejeita e repete a pergunta (ate 3 tentativas).
 5. Apos a ultima pergunta, o bot exibe um resumo e pede confirmacao (S/N).
 6. Ao confirmar:
-   - Dados salvos no Supabase (tabela `cadastros`)
+   - Dados salvos no banco de dados (Neon) (tabela `cadastros`)
    - Sessao encerrada
 7. Sessions expiram apos 24 horas sem interacao.
 
@@ -365,7 +322,7 @@ O resultado estara em `dist\DirecioZAP_Manager\`.
 - **Nao precisa instalar ngrok** — ja vem embutido no pacote
 - Na primeira execucao, o SmartScreen do Windows pode pedir uma confirmacao ("Executar assim mesmo") por o executavel nao ser assinado digitalmente — isso nao exige senha de administrador
 - O aviso de Firewall ao iniciar o bot pode ser ignorado (Cancelar) sem afetar o funcionamento, ja que o ngrok se conecta por `localhost`
-- Credenciais Twilio/Meta e Supabase proprias
+- Credenciais Twilio/Meta e banco de dados (Neon) proprias
 
 ---
 
@@ -411,8 +368,7 @@ Cobertura:
 | `META_VERIFY_TOKEN` | Se Meta | Token de verificacao do webhook |
 | `NGROK_AUTH_TOKEN` | Recomendado | Token de autenticacao do ngrok |
 | `NGROK_DOMAIN` | Nao | Dominio estatico ngrok |
-| `SUPABASE_URL` | Sim | URL do projeto Supabase |
-| `SUPABASE_KEY` | Sim | Chave anon public do Supabase |
+| `DATABASE_URL` | Sim | Connection string do Postgres (Neon) |
 | `VERIFY_TOKEN` | Sim | Token para proteger `/exportar` |
 
 ---

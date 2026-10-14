@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse, Response
 from config import settings
 from conversation import MSGS, ConversationManager
 from excel_writer import gerar_excel
-from supabase_session import get_cadastros, get_todas_perguntas
+from db import get_cadastros, get_todas_perguntas
 from whatsapp import send_message
 
 app = FastAPI(title="DirecioZap Bot")
@@ -45,7 +45,7 @@ def _assinatura_meta_valida(raw_body: bytes, header: str | None) -> bool:
 
 
 def _responder(phone: str, text: str) -> None:
-    """Processa a mensagem e responde. Uma falha (ex: Supabase fora do ar) não pode
+    """Processa a mensagem e responde. Uma falha (ex: banco de dados fora do ar) não pode
     sumir em silêncio: o fornecedor recebe um aviso para tentar de novo."""
     try:
         response = manager.process(phone, text)

@@ -17,8 +17,7 @@ class Settings(BaseSettings):
     META_API_VERSION: str = "v23.0"
 
     VERIFY_TOKEN: str
-    SUPABASE_URL: str
-    SUPABASE_KEY: str
+    DATABASE_URL: str
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

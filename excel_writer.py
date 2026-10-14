@@ -20,7 +20,7 @@ def _formatar_data(iso: str | None) -> str:
 
 
 def gerar_excel(cadastros: list[dict], perguntas: list[dict]) -> bytes:
-    """Gera a planilha a partir dos cadastros do Supabase (fonte única da verdade).
+    """Gera a planilha a partir dos cadastros do banco de dados (fonte única da verdade).
 
     As colunas seguem a ordem atual das perguntas. Perguntas inativas só entram se algum
     cadastro tiver o campo, e campos que não existem mais nas perguntas vão para o fim —

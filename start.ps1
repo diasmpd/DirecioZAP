@@ -42,11 +42,8 @@ if (-not $envMap.ContainsKey("TWILIO_ACCOUNT_SID") -or -not $envMap["TWILIO_ACCO
 if (-not $envMap.ContainsKey("TWILIO_AUTH_TOKEN") -or -not $envMap["TWILIO_AUTH_TOKEN"]) {
     Fail "TWILIO_AUTH_TOKEN nao configurado no .env"
 }
-if (-not $envMap.ContainsKey("SUPABASE_URL") -or -not $envMap["SUPABASE_URL"]) {
-    Fail "SUPABASE_URL nao configurado no .env"
-}
-if (-not $envMap.ContainsKey("SUPABASE_KEY") -or -not $envMap["SUPABASE_KEY"]) {
-    Fail "SUPABASE_KEY nao configurado no .env"
+if (-not $envMap.ContainsKey("DATABASE_URL") -or -not $envMap["DATABASE_URL"]) {
+    Fail "DATABASE_URL nao configurado no .env"
 }
 
 $ngrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue

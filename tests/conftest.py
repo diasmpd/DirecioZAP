@@ -11,8 +11,7 @@ os.environ.setdefault("TWILIO_ACCOUNT_SID", "ACtest00000000000000000000000000000
 os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_auth_token")
 os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")
 os.environ.setdefault("VERIFY_TOKEN", "test_verify_token")
-os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "test_supabase_key")
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 
 CNPJ_VALIDO = "11.222.333/0001-81"
 CNPJ_RAW_VALIDO = "11222333000181"
@@ -51,13 +50,6 @@ SAMPLE_PERGUNTAS = [
 @pytest.fixture
 def sample_perguntas():
     return SAMPLE_PERGUNTAS
-
-
-@pytest.fixture
-def mock_supabase(monkeypatch):
-    mock = MagicMock()
-    monkeypatch.setattr("supabase_session._client", mock)
-    return mock
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 import unicodedata
 
-from supabase_session import (
+from db import (
     create_session,
     delete_session,
     get_perguntas,

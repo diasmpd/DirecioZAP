@@ -13,7 +13,5 @@ services:
         sync: false
       - key: VERIFY_TOKEN
         sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
+      - key: DATABASE_URL
         sync: false

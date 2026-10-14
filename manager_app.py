@@ -18,6 +18,8 @@ import tkinter as tk
 
 import customtkinter as ctk
 
+from db import Database
+
 # ── Ambiente ──────────────────────────────────────────────────
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys.executable).parent
@@ -127,75 +129,12 @@ class EnvManager:
 env = EnvManager()
 
 
-# ── SupabaseAPI ───────────────────────────────────────────────
-class SupabaseAPI:
-    def __init__(self, url: str, key: str):
-        self.url = url.rstrip("/")
-        self.key = key
-        self.headers = {
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
-
-    def _get(self, table: str, params: str = "") -> list:
-        r = requests.get(
-            f"{self.url}/rest/v1/{table}?{params}",
-            headers=self.headers, timeout=10,
-        )
-        r.raise_for_status()
-        return r.json()
-
-    def _post(self, table: str, data: dict) -> dict:
-        r = requests.post(
-            f"{self.url}/rest/v1/{table}",
-            headers=self.headers, json=data, timeout=10,
-        )
-        r.raise_for_status()
-        res = r.json()
-        return res[0] if isinstance(res, list) and res else res
-
-    def _patch(self, table: str, flt: str, data: dict) -> None:
-        r = requests.patch(
-            f"{self.url}/rest/v1/{table}?{flt}",
-            headers=self.headers, json=data, timeout=10,
-        )
-        r.raise_for_status()
-
-    def _delete(self, table: str, flt: str) -> None:
-        r = requests.delete(
-            f"{self.url}/rest/v1/{table}?{flt}",
-            headers=self.headers, timeout=10,
-        )
-        r.raise_for_status()
-
-    def get_perguntas(self) -> list:
-        return self._get("perguntas", "order=ordem&select=*")
-
-    def create_pergunta(self, data: dict) -> dict:
-        return self._post("perguntas", data)
-
-    def update_pergunta(self, id_: int, data: dict) -> None:
-        self._patch("perguntas", f"id=eq.{id_}", data)
-
-    def delete_pergunta(self, id_: int) -> None:
-        self._delete("perguntas", f"id=eq.{id_}")
-
-    def get_sessions(self) -> list:
-        return self._get("sessions", "order=atualizado_em.desc&limit=50&select=*")
-
-    def get_cadastros(self) -> list:
-        return self._get("cadastros", "order=criado_em.desc&limit=100&select=*")
-
-    @staticmethod
-    def from_env() -> "SupabaseAPI | None":
-        cfg = env.load()
-        url = cfg.get("SUPABASE_URL", "")
-        key = cfg.get("SUPABASE_KEY", "")
-        if not url or not key or "coloque_aqui" in url:
-            return None
-        return SupabaseAPI(url, key)
+# ── Banco (Neon / Postgres) ───────────────────────────────────
+def db_from_env() -> Database | None:
+    url = env.load().get("DATABASE_URL", "").strip()
+    if not url or "coloque_aqui" in url:
+        return None
+    return Database(url)
 
 
 # ── BotController ─────────────────────────────────────────────
@@ -229,7 +168,7 @@ class UvicornServer:
 # caso contrário o pydantic Settings ficaria com os valores da 1ª carga.
 _BOT_MODULES = (
     "main", "config", "conversation", "whatsapp",
-    "supabase_session", "excel_writer", "validators",
+    "db", "excel_writer", "validators",
 )
 
 
@@ -619,16 +558,16 @@ class PerguntasTab(ctk.CTkFrame):
 
         self._load()
 
-    def _supabase(self) -> SupabaseAPI | None:
-        sb = SupabaseAPI.from_env()
+    def _db(self) -> Database | None:
+        sb = db_from_env()
         if not sb:
             self.lbl_status.configure(
-                text="Supabase não configurado. Vá em Configurações e salve as credenciais.",
+                text="Banco de dados não configurado. Vá em Configurações e salve a URL de conexão.",
                 text_color=C_DANGER)
         return sb
 
     def _load(self):
-        sb = self._supabase()
+        sb = self._db()
         if not sb:
             return
         self.lbl_status.configure(text="Carregando...", text_color=C_MUTED)
@@ -663,7 +602,7 @@ class PerguntasTab(ctk.CTkFrame):
         self.wait_window(dlg)
         if not dlg.result:
             return
-        sb = self._supabase()
+        sb = self._db()
         if not sb:
             return
         try:
@@ -681,7 +620,7 @@ class PerguntasTab(ctk.CTkFrame):
         self.wait_window(dlg)
         if not dlg.result:
             return
-        sb = self._supabase()
+        sb = self._db()
         if not sb:
             return
         try:
@@ -698,7 +637,7 @@ class PerguntasTab(ctk.CTkFrame):
         if not messagebox.askyesno("Confirmar",
                                     f"Excluir a pergunta '{row['label']}'?"):
             return
-        sb = self._supabase()
+        sb = self._db()
         if not sb:
             return
         try:
@@ -711,7 +650,7 @@ class PerguntasTab(ctk.CTkFrame):
         row = self._selected_row()
         if not row:
             return
-        sb = self._supabase()
+        sb = self._db()
         if not sb:
             return
         ordered = sorted(self._rows, key=lambda r: r["ordem"])
@@ -811,10 +750,10 @@ class MensagensTab(ctk.CTkFrame):
         self._load()
 
     def _load(self):
-        sb = SupabaseAPI.from_env()
+        sb = db_from_env()
         if not sb:
             self.lbl_count.configure(
-                text="Supabase não configurado.", text_color=C_DANGER)
+                text="Banco de dados não configurado.", text_color=C_DANGER)
             return
         try:
             self.tree.delete(*self.tree.get_children())
@@ -830,7 +769,7 @@ class MensagensTab(ctk.CTkFrame):
                     text=f"{len(data)} sessão(ões) ativa(s).",
                     text_color=C_MUTED)
             else:
-                data = sb.get_cadastros()
+                data = sb.get_cadastros(limit=100, recentes_primeiro=True)
                 for i, r in enumerate(data):
                     dados = r.get("dados", {})
                     resumo = " | ".join(f"{k}: {v}" for k, v in list(dados.items())[:3])
@@ -905,7 +844,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
 
     def _build(self):
         page_header(self, "Configurações",
-                    "Credenciais do WhatsApp, do Supabase e do túnel público.").pack(
+                    "Credenciais do WhatsApp, do banco de dados e do túnel público.").pack(
             anchor="w", padx=28, pady=(24, 18))
 
         # Provedor
@@ -969,14 +908,15 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         ctk.CTkLabel(c_ng, text=ngrok_hint, font=F_SMALL,
                      text_color=ngrok_hint_color).pack(anchor="w", padx=18, pady=(0, 16))
 
-        # Supabase
-        c_sb = self._card("Supabase")
-        self.e_sb_url, _ = self._field(c_sb, "Project URL (ex: https://xxxxx.supabase.co)")
-        self.e_sb_key, _ = self._field(c_sb, "API Key (anon public)", secret=True)
+        # Banco de dados
+        c_sb = self._card("Banco de dados (Neon)")
+        self.e_db_url, _ = self._field(
+            c_sb, "Connection string (ex: postgresql://usuario:senha@ep-xxx.neon.tech/neondb?sslmode=require)",
+            secret=True)
 
         sb_row = ctk.CTkFrame(c_sb, fg_color="transparent")
         sb_row.pack(fill="x", padx=18, pady=(0, 16))
-        secondary_button(sb_row, "Testar Conexão", self._test_supabase, width=150).pack(side="left")
+        secondary_button(sb_row, "Testar Conexão", self._test_db, width=150).pack(side="left")
         self.lbl_sb_test = ctk.CTkLabel(sb_row, text="", font=F_SMALL,
                                          text_color=C_MUTED)
         self.lbl_sb_test.pack(side="left", padx=10)
@@ -1021,8 +961,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_APP_SECRET": self.e_meta_secret,
             "NGROK_AUTH_TOKEN": self.e_ngrok_token,
             "NGROK_DOMAIN": self.e_ngrok_domain,
-            "SUPABASE_URL": self.e_sb_url,
-            "SUPABASE_KEY": self.e_sb_key,
+            "DATABASE_URL": self.e_db_url,
             "VERIFY_TOKEN": self.e_verify,
         }
         for key, entry in mapping.items():
@@ -1044,8 +983,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_APP_SECRET": self.e_meta_secret.get().strip(),
             "NGROK_AUTH_TOKEN": self.e_ngrok_token.get().strip(),
             "NGROK_DOMAIN": self.e_ngrok_domain.get().strip(),
-            "SUPABASE_URL": self.e_sb_url.get().strip(),
-            "SUPABASE_KEY": self.e_sb_key.get().strip(),
+            "DATABASE_URL": self.e_db_url.get().strip(),
             "VERIFY_TOKEN": self.e_verify.get().strip(),
         }
         updates = {k: v for k, v in updates.items() if v}
@@ -1053,18 +991,19 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         self.lbl_save.configure(text="Configurações salvas com sucesso.", text_color=C_SUCCESS)
         self.after(3000, lambda: self.lbl_save.configure(text=""))
 
-    def _test_supabase(self):
-        url = self.e_sb_url.get().strip()
-        key = self.e_sb_key.get().strip()
-        if not url or not key:
-            self.lbl_sb_test.configure(text="Preencha URL e Key antes de testar.", text_color=C_DANGER)
+    def _test_db(self):
+        url = self.e_db_url.get().strip()
+        if not url:
+            self.lbl_sb_test.configure(text="Preencha a connection string antes de testar.", text_color=C_DANGER)
             return
         self.lbl_sb_test.configure(text="Testando...", text_color=C_MUTED)
         self.update()
         try:
-            api = SupabaseAPI(url, key)
-            api.get_perguntas()
-            self.lbl_sb_test.configure(text="Conexão OK", text_color=C_SUCCESS)
+            api = Database(url)
+            criou = api.init_schema()
+            n = len(api.get_todas_perguntas())
+            extra = " — perguntas padrão criadas" if criou else ""
+            self.lbl_sb_test.configure(text=f"Conexão OK ({n} pergunta(s){extra})", text_color=C_SUCCESS)
         except Exception as ex:
             self.lbl_sb_test.configure(text=f"Falhou: {ex}", text_color=C_DANGER)
 
@@ -1074,47 +1013,14 @@ TUTORIAL_TEXT = [
     ("SOBRE O DIRECIOZAP", True),
     ("O DirecioZAP é um bot de WhatsApp que coleta informações de usuários via conversa automatizada. "
      "O administrador configura as perguntas, e os usuários respondem naturalmente pelo WhatsApp. "
-     "Os dados são salvos no Supabase e exportáveis em Excel.\n", False),
+     "Os dados são salvos no banco de dados (Neon) e exportáveis em Excel.\n", False),
 
-    ("1. CONFIGURANDO O SUPABASE", True),
-    ("1.1  Acesse supabase.com e crie uma conta gratuita.", False),
-    ("1.2  Clique em 'New Project', defina um nome e senha.", False),
-    ("1.3  No menu lateral, acesse SQL Editor e execute:\n", False),
-    ("""CREATE TABLE perguntas (
-  id        SERIAL PRIMARY KEY,
-  ordem     INTEGER NOT NULL,
-  campo     TEXT NOT NULL UNIQUE,
-  label     TEXT NOT NULL,
-  pergunta  TEXT NOT NULL,
-  tipo      TEXT NOT NULL DEFAULT 'texto',
-  msg_erro  TEXT,
-  ativo     BOOLEAN NOT NULL DEFAULT TRUE
-);
-
-INSERT INTO perguntas (ordem, campo, label, pergunta, tipo, msg_erro) VALUES
-  (1,'razao_social','Razão Social','Qual é a Razão Social da sua empresa?','texto',NULL),
-  (2,'cnpj','CNPJ','Informe o CNPJ da empresa:','cnpj','CNPJ inválido.'),
-  (3,'contato','Contato','Qual o contato principal? (telefone ou e-mail):','contato','Formato inválido.'),
-  (4,'servico','Serviço','Que tipo de serviço sua empresa oferece?','texto',NULL),
-  (5,'estados','Estados','Em quais estados atuam? (ex: MG, SP):','estados','Siglas inválidas.');
-
-CREATE TABLE cadastros (
-  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone     TEXT NOT NULL,
-  dados     JSONB NOT NULL,
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE sessions (
-  phone         TEXT PRIMARY KEY,
-  state         TEXT NOT NULL DEFAULT 'SAUDACAO',
-  dados         JSONB NOT NULL DEFAULT '{}',
-  tentativas    JSONB NOT NULL DEFAULT '{}',
-  criado_em     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);\n""", False),
-    ("1.4  Em Project Settings > API, copie a Project URL e a chave 'anon public'.", False),
-    ("1.5  Cole as credenciais na aba Configurações deste aplicativo.\n", False),
+    ("1. CONFIGURANDO O BANCO DE DADOS (NEON)", True),
+    ("1.1  Acesse neon.tech e crie uma conta gratuita.", False),
+    ("1.2  Crie um projeto (região: AWS São Paulo, se disponível).", False),
+    ("1.3  No painel do projeto, clique em 'Connect' e copie a connection string (postgresql://...).", False),
+    ("1.4  Cole a connection string na aba Configurações e clique em 'Testar Conexão'.", False),
+    ("1.5  O teste cria as tabelas e as perguntas padrão automaticamente, se ainda não existirem.\n", False),
 
     ("2. CONFIGURANDO O TWILIO (SANDBOX PARA TESTES)", True),
     ("2.1  Acesse twilio.com e crie uma conta gratuita.", False),
@@ -1173,7 +1079,7 @@ CREATE TABLE sessions (
     ("6.2  O bot responde com a saudação e a primeira pergunta.", False),
     ("6.3  O usuário responde cada pergunta em sequência.", False),
     ("6.4  Após a última pergunta, o bot exibe um resumo e pede confirmação (S/N).", False),
-    ("6.5  Ao confirmar, o cadastro é salvo no Supabase e no Excel.", False),
+    ("6.5  Ao confirmar, o cadastro é salvo no banco de dados e entra no Excel exportado.", False),
     ("6.6  Se o usuário errar 3 vezes a mesma pergunta, a sessão é encerrada.", False),
     ("6.7  Sessões expiram após 24 horas sem interação.\n", False),
 
