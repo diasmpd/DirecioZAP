@@ -3,6 +3,11 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
+from receita import CAMPO_SITUACAO, LABEL_SITUACAO
+
+# Campos gravados pelo bot que não são perguntas.
+_LABELS_EXTRAS = {CAMPO_SITUACAO: LABEL_SITUACAO}
+
 # Brasília não tem horário de verão desde 2019 — offset fixo evita depender do tzdata no Windows.
 _FUSO_BRASILIA = timezone(timedelta(hours=-3))
 
@@ -38,7 +43,7 @@ def gerar_excel(cadastros: list[dict], perguntas: list[dict]) -> bytes:
             colunas.append((campo, p.get("label") or campo))
             vistos.add(campo)
     for campo in sorted(campos_com_dados - vistos):
-        colunas.append((campo, campo))
+        colunas.append((campo, _LABELS_EXTRAS.get(campo, campo)))
 
     wb = Workbook()
     ws = wb.active

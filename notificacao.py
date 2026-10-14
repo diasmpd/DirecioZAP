@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from log_setup import get_logger, mascarar
+from receita import CAMPO_SITUACAO, LABEL_SITUACAO
 
 log = get_logger("notificacao")
 
@@ -23,7 +24,7 @@ def destinatarios(valor: str | None) -> list[str]:
 
 def montar_email(phone: str, dados: dict, perguntas: list[dict], criado_em: str | None = None) -> tuple[str, str]:
     """(assunto, corpo HTML). Tudo que veio do fornecedor é escapado antes de ir para o HTML."""
-    labels = {p["campo"]: p.get("label") or p["campo"] for p in perguntas}
+    labels = {CAMPO_SITUACAO: LABEL_SITUACAO, **{p["campo"]: p.get("label") or p["campo"] for p in perguntas}}
     nome = dados.get("razao_social") or "(sem razão social)"
     assunto = f"DirecioZAP: novo cadastro de fornecedor — {nome}"
 

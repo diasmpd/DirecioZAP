@@ -51,11 +51,18 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS sessions_atualizado_em_idx ON sessions (atualizado_em);
+
+-- Ajustes de dados que devem rodar uma vez só (ver init_schema).
+CREATE TABLE IF NOT EXISTS migracoes (
+  nome        TEXT PRIMARY KEY,
+  aplicada_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
 
 PERGUNTAS_PADRAO = [
-    (1, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
-    (2, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
+    # CNPJ primeiro: a consulta na Receita preenche a Razão Social e ela não é perguntada.
+    (1, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
+    (2, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
     (3, "contato", "Contato", "Qual o contato principal? (telefone ou e-mail):", "contato", "Formato inválido."),
     (4, "servico", "Serviços", "Quais serviços sua empresa oferece? Pode escolher mais de um.", "servicos", None),
     (5, "estados", "Regionais", "Em quais regionais da Direcional vocês atendem? Pode escolher mais de uma.", "estados_atendidos", None),
@@ -146,6 +153,21 @@ class Database:
                     "VALUES (%s, %s, %s, %s, %s, %s)",
                     PERGUNTAS_PADRAO,
                 )
+            # Out/2026: o CNPJ passa a vir antes da Razão Social (que a Receita preenche).
+            # Só uma vez — depois disso, a ordem definida no Manager é respeitada.
+            with conn.transaction():
+                primeira_vez = conn.execute(
+                    "INSERT INTO migracoes (nome) VALUES ('cnpj_antes_da_razao_social') "
+                    "ON CONFLICT DO NOTHING RETURNING nome"
+                ).fetchone()
+                if primeira_vez and not vazio:
+                    ordens = dict(conn.execute(
+                        "SELECT campo, ordem FROM perguntas WHERE campo IN ('cnpj', 'razao_social')"
+                    ).fetchall())
+                    if len(ordens) == 2 and ordens["razao_social"] < ordens["cnpj"]:
+                        for campo, outro in (("cnpj", "razao_social"), ("razao_social", "cnpj")):
+                            conn.execute("UPDATE perguntas SET ordem = %s WHERE campo = %s",
+                                         (ordens[outro], campo))
             return vazio
 
     # ── Sessões ────────────────────────────────────────────────

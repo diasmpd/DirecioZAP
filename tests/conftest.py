@@ -63,6 +63,14 @@ def bloquear_outlook(monkeypatch):
     return mock
 
 
+@pytest.fixture(autouse=True)
+def sem_consulta_receita(monkeypatch):
+    """Nenhum teste consulta a Receita de verdade; por padrão a consulta "falha" (None)."""
+    mock = MagicMock(return_value=None)
+    monkeypatch.setattr("receita._buscar", mock)
+    return mock
+
+
 @pytest.fixture
 def mock_send_message(monkeypatch):
     mock = MagicMock(return_value=True)

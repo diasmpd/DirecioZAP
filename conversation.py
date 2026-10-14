@@ -10,6 +10,7 @@ from db import (
     save_cadastro,
     update_session,
 )
+import receita
 from log_setup import get_logger, mascarar
 from opcoes import (
     ESTADOS_ATENDIDOS,
@@ -19,6 +20,7 @@ from opcoes import (
     normalizar_estados_atendidos,
     normalizar_servicos,
 )
+from resposta import Resposta, prefixar
 from validators import (
     normalizar_cnpj,
     normalizar_contato,
@@ -165,23 +167,6 @@ def _campo_por_alteracao(text: str, perguntas: list[dict]) -> str | None:
     return None
 
 
-class Resposta(str):
-    """Texto da resposta + elementos interativos opcionais do WhatsApp.
-
-    É um str para o resto do código (e os testes) continuar tratando a resposta como texto;
-    quem envia (whatsapp.py) usa `botoes` (até 3, título até 20 caracteres) ou `lista`
-    (até 10 itens) quando o provedor suporta, e cai no texto puro quando não.
-    O id de um botão/item volta no webhook como se o fornecedor tivesse digitado aquele texto.
-    """
-
-    def __new__(cls, texto: str, botoes=None, lista=None, lista_botao: str = "Escolher"):
-        obj = super().__new__(cls, texto)
-        obj.botoes = botoes or []          # [(id, título)]
-        obj.lista = lista or []            # [(id, título)]
-        obj.lista_botao = lista_botao
-        return obj
-
-
 # Tipos de pergunta com lista fechada de respostas: o menu numerado vai junto da pergunta.
 _MENUS = {"servicos": SERVICOS, "estados_atendidos": ESTADOS_ATENDIDOS}
 
@@ -197,6 +182,53 @@ def _pergunta(p: dict) -> str:
                  if len(opcoes) > 10 else "Responda com os números ou as siglas (ex: 1, 3).")
     # A instrução vem antes do menu: a lista de serviços é longa e o exemplo ficaria escondido no fim.
     return f"{p['pergunta']}\n{instrucao}\n\n{menu(opcoes)}"
+
+
+def _com(prefixo: str, p: dict) -> Resposta:
+    return prefixar(prefixo, _pergunta(p))
+
+
+def _proxima(perguntas: list[dict], dados: dict) -> dict | None:
+    """A primeira pergunta ainda sem resposta — pula as preenchidas pela consulta do CNPJ."""
+    return next((p for p in perguntas if p["campo"] not in dados), None)
+
+
+def _aplicar_receita(cnpj: str, dados: dict, perguntas: list[dict]) -> str:
+    """Consulta o CNPJ e preenche a Razão Social (se ainda não foi digitada) e a situação na
+    Receita. Devolve o aviso para o fornecedor, ou "" se não houve o que mostrar."""
+    auto = [c for c in dados.get("_auto") or [] if c != "razao_social"]
+    if "razao_social" in (dados.get("_auto") or []):
+        dados.pop("razao_social", None)  # veio do CNPJ anterior: não vale para o novo
+    dados.pop(receita.CAMPO_SITUACAO, None)
+
+    info = receita.consultar_cnpj(cnpj)
+    aviso = ""
+    if info:
+        dados[receita.CAMPO_SITUACAO] = info["situacao"]
+        pede_razao = any(p["campo"] == "razao_social" for p in perguntas)
+        if info.get("razao_social") and pede_razao and "razao_social" not in dados:
+            dados["razao_social"] = info["razao_social"]
+            auto.append("razao_social")
+            local = "/".join(x for x in (info.get("municipio"), info.get("uf")) if x)
+            aviso = (f"Encontrei na Receita Federal: *{info['razao_social']}*"
+                     + (f" ({local})" if local else "") + ".\n"
+                     "Se não for a sua empresa, dá para corrigir no resumo, no final.")
+
+    _marcar_auto(dados, auto)
+    return aviso
+
+
+def _marcar_auto(dados: dict, auto: list[str]) -> None:
+    """Guarda quais campos foram preenchidos pela consulta do CNPJ (não foram perguntados)."""
+    if auto:
+        dados["_auto"] = auto
+    else:
+        dados.pop("_auto", None)
+
+
+def _para_salvar(dados: dict) -> dict:
+    """Tira o controle interno da sessão (chaves com "_") antes de gravar o cadastro."""
+    return {k: v for k, v in dados.items() if not k.startswith("_")}
 
 
 def _validar(text: str, tipo: str):
@@ -280,15 +312,15 @@ class ConversationManager:
             delete_session(phone)
             create_session(phone)
             update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-            return f"{MSGS['REINICIO']}\n\n{_pergunta(primeira)}"
+            return _com(MSGS["REINICIO"], primeira)
 
         if intencao == "AJUDA" and state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return f"{MSGS['AJUDA_GERAL']}\n\n{_pergunta(primeira)}"
+            return _com(MSGS["AJUDA_GERAL"], primeira)
 
         if state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return f"{MSGS['SAUDACAO']}\nVou te guiar rapidinho no cadastro.\n\n{_pergunta(primeira)}"
+            return _com(f"{MSGS['SAUDACAO']}\nVou te guiar rapidinho no cadastro.", primeira)
 
         if state.startswith(("AGUARDA_", "ALTERA_")):
             # ALTERA_<campo>: correção de um único campo pedida no resumo; ao responder,
@@ -296,15 +328,16 @@ class ConversationManager:
             alterando = state.startswith("ALTERA_")
             campo = state.split("_", 1)[1]
             pergunta_cfg = next((p for p in perguntas if p["campo"] == campo), None)
+            tipo = (pergunta_cfg or {}).get("tipo") or "texto"
 
             if pergunta_cfg is None:
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-                return f"{MSGS['SAUDACAO']}\n\n{_pergunta(primeira)}"
+                return _com(MSGS["SAUDACAO"], primeira)
 
             if intencao == "AJUDA":
-                return f"{_mensagem_ajuda(pergunta_cfg['tipo'])}\n\n{_pergunta(pergunta_cfg)}"
+                return _com(_mensagem_ajuda(tipo), pergunta_cfg)
 
             if intencao == "VOLTAR" and alterando:
                 tentativas.pop(campo, None)
@@ -314,18 +347,27 @@ class ConversationManager:
             if intencao == "VOLTAR":
                 idx = next(i for i, p in enumerate(perguntas) if p["campo"] == campo)
                 if idx == 0:
-                    return f"Você está na primeira pergunta.\n\n{_pergunta(pergunta_cfg)}"
+                    return _com("Você está na primeira pergunta.", pergunta_cfg)
 
-                destino = perguntas[idx - 1]
-                limpar = [p["campo"] for p in perguntas[idx - 1:]]
-                for c in limpar:
-                    dados.pop(c, None)
-                    tentativas.pop(c, None)
+                # Volta para a pergunta anterior que o fornecedor respondeu — a Razão Social
+                # preenchida pelo CNPJ não foi perguntada, então volta direto para o CNPJ.
+                auto = dados.get("_auto") or []
+                j = idx - 1
+                while j > 0 and perguntas[j]["campo"] in auto:
+                    j -= 1
+                destino = perguntas[j]
+                for p in perguntas[j:]:
+                    dados.pop(p["campo"], None)
+                    tentativas.pop(p["campo"], None)
+                if "cnpj" not in dados:
+                    dados.pop(receita.CAMPO_SITUACAO, None)
+                _marcar_auto(dados, [c for c in auto if c in dados])
 
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
-                return f"Sem problemas, vamos corrigir juntos.\n\n{_pergunta(destino)}"
+                return _com("Sem problemas, vamos corrigir juntos.", destino)
 
-            valor = _validar(text, pergunta_cfg["tipo"])
+            valor = _validar(text, tipo)
+
             if valor is None:
                 n = tentativas.get(campo, 0) + 1
                 tentativas[campo] = n
@@ -340,29 +382,31 @@ class ConversationManager:
                     delete_session(phone)
                     return MSGS["MAX_TENTATIVAS"]
                 update_session(phone, state, dados, tentativas)
-                opcoes = _MENUS.get((pergunta_cfg.get("tipo") or "").lower())
+                opcoes = _MENUS.get(tipo.lower())
                 if opcoes:
                     detalhe = explicar_invalidos(text, opcoes)
                     return (f"Não consegui entender:\n{detalhe}\n\n"
-                            f"Dica: {_mensagem_ajuda(pergunta_cfg['tipo'])}")
+                            f"Dica: {_mensagem_ajuda(tipo)}")
                 erro = pergunta_cfg.get("msg_erro") or pergunta_cfg["pergunta"]
-                return f"{erro}\n\nDica: {_mensagem_ajuda(pergunta_cfg['tipo'])}"
+                return f"{erro}\n\nDica: {_mensagem_ajuda(tipo)}"
 
             tentativas.pop(campo, None)
             dados[campo] = valor
+            # Digitado pelo fornecedor: deixa de ser um valor preenchido pelo CNPJ.
+            _marcar_auto(dados, [c for c in dados.get("_auto") or [] if c != campo])
 
-            if alterando:
-                update_session(phone, "CONFIRMACAO", dados, tentativas)
-                return f"Pronto, atualizado.\n\n{_gerar_resumo(dados, perguntas)}"
+            aviso = _aplicar_receita(valor, dados, perguntas) if tipo.lower() == "cnpj" else ""
 
-            idx = next(i for i, p in enumerate(perguntas) if p["campo"] == campo)
-            if idx + 1 < len(perguntas):
-                proxima = perguntas[idx + 1]
+            proxima = _proxima(perguntas, dados)
+            if proxima is not None:
+                # Inclui a correção do CNPJ que não achou a empresa: a Razão Social é perguntada.
                 update_session(phone, f"AGUARDA_{proxima['campo']}", dados, tentativas)
-                return _pergunta(proxima)
+                return _com(aviso, proxima)
 
             update_session(phone, "CONFIRMACAO", dados, tentativas)
-            return _gerar_resumo(dados, perguntas)
+            if alterando:
+                aviso = f"{aviso}\n\nPronto, atualizado." if aviso else "Pronto, atualizado."
+            return prefixar(aviso, _gerar_resumo(dados, perguntas))
 
         if state == "CONFIRMACAO":
             resp = _resposta_confirmacao(text)
@@ -383,11 +427,11 @@ class ConversationManager:
                     tentativas.pop(campo_alvo, None)
                     update_session(phone, f"ALTERA_{campo_alvo}", dados, tentativas)
                     label = pergunta_alvo.get("label") or campo_alvo
-                    return (
+                    return _com(
                         "Perfeito, vamos ajustar só esse ponto.\n"
                         f"{label} atual: {dados.get(campo_alvo, '')}\n"
-                        "(Digite VOLTAR para manter o valor atual.)\n\n"
-                        f"{_pergunta(pergunta_alvo)}"
+                        "(Digite VOLTAR para manter o valor atual.)",
+                        pergunta_alvo,
                     )
 
                 # "Alterar um dado" (botão) ou "ALTERAR" sem campo: lista dos campos para tocar.
@@ -403,7 +447,7 @@ class ConversationManager:
             if resp == "SIM":
                 try:
                     telefone = normalizar_whatsapp_br(phone)
-                    save_cadastro(telefone, dados)
+                    save_cadastro(telefone, _para_salvar(dados))
                 except Exception:
                     log.exception("Erro ao salvar cadastro de %s", mascarar(phone))
                     return MSGS["ERRO_SALVAR"]
@@ -418,7 +462,7 @@ class ConversationManager:
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-                return f"{MSGS['REINICIO']}\n\n{_pergunta(primeira)}"
+                return _com(MSGS["REINICIO"], primeira)
             return (
                 f"{MSGS['CONFIRMACAO_INVALIDA']}\n"
                 "Você também pode digitar ALTERAR + campo (ex: ALTERAR CNPJ).\n\n"
@@ -429,4 +473,4 @@ class ConversationManager:
         delete_session(phone)
         create_session(phone)
         update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-        return f"{MSGS['SAUDACAO']}\n\n{_pergunta(primeira)}"
+        return _com(MSGS["SAUDACAO"], primeira)
