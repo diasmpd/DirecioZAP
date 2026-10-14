@@ -32,7 +32,11 @@ MAX_TENTATIVAS = 3
 
 MSGS = {
     "SAUDACAO": "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.",
-    "SUCESSO": "Cadastro realizado com sucesso! Caso a obra precise de algum serviço, eles entram em contato com você.",
+    "SUCESSO": (
+        "Cadastro realizado com sucesso! Os responsáveis pela contratação entrarão em contato com você.\n\n"
+        "Cadastre-se também no Portal do Fornecedor para ter acesso às cotações: "
+        "https://fornecedor.direcional.com.br/"
+    ),
     "REINICIO": "Sem problemas, vamos recomeçar.",
     "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
     "ERRO_SALVAR": "Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
@@ -191,7 +195,8 @@ def _pergunta(p: dict) -> str:
         return p["pergunta"]
     instrucao = ("Responda com os números, separados por vírgula (ex: 3, 15, 22)."
                  if len(opcoes) > 10 else "Responda com os números ou as siglas (ex: 1, 3).")
-    return f"{p['pergunta']}\n\n{menu(opcoes)}\n\n{instrucao}"
+    # A instrução vem antes do menu: a lista de serviços é longa e o exemplo ficaria escondido no fim.
+    return f"{p['pergunta']}\n{instrucao}\n\n{menu(opcoes)}"
 
 
 def _validar(text: str, tipo: str):
