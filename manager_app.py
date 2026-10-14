@@ -5,6 +5,7 @@ Interface gráfica de gestão do bot de WhatsApp
 
 import os
 import sys
+import shutil
 import json
 import time
 import threading
@@ -958,6 +959,9 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         self.e_ngrok_domain, _ = self._field(c_ng, "Domínio estático (opcional, ex: abc.ngrok-free.app)")
         if ngrok_is_bundled():
             ngrok_hint = "ngrok incluído neste aplicativo — nenhuma instalação necessária."
+            ngrok_hint_color = C_SUCCESS
+        elif shutil.which("ngrok"):
+            ngrok_hint = "ngrok encontrado no PATH do sistema."
             ngrok_hint_color = C_SUCCESS
         else:
             ngrok_hint = "ngrok não encontrado. Instale em ngrok.com/download ou reinstale o DirecioZAP Manager."
