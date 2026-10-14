@@ -5,6 +5,8 @@ import os
 import pytest
 from unittest.mock import MagicMock
 
+# Os testes não podem depender do .env real (que hoje usa Meta).
+os.environ.setdefault("WHATSAPP_PROVIDER", "Twilio")
 os.environ.setdefault("TWILIO_ACCOUNT_SID", "ACtest000000000000000000000000000000")
 os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_auth_token")
 os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")
