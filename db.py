@@ -51,18 +51,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS sessions_atualizado_em_idx ON sessions (atualizado_em);
-
-CREATE TABLE IF NOT EXISTS migracoes (
-  nome        TEXT PRIMARY KEY,
-  aplicada_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 """
 
 PERGUNTAS_PADRAO = [
-    (1, "servico", "Serviços", "Quais serviços sua empresa oferece? Pode escolher mais de um.", "servicos", None),
-    (2, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
-    (3, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
-    (4, "contato", "Contato", "Qual o contato principal? (telefone ou e-mail):", "contato", "Formato inválido."),
+    (1, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
+    (2, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
+    (3, "contato", "Contato", "Qual o contato principal? (telefone ou e-mail):", "contato", "Formato inválido."),
+    (4, "servico", "Serviços", "Quais serviços sua empresa oferece? Pode escolher mais de um.", "servicos", None),
     (5, "estados", "Regionais", "Em quais regionais da Direcional vocês atendem? Pode escolher mais de uma.", "estados_atendidos", None),
 ]
 
@@ -150,19 +145,6 @@ class Database:
                     "INSERT INTO perguntas (ordem, campo, label, pergunta, tipo, msg_erro) "
                     "VALUES (%s, %s, %s, %s, %s, %s)",
                     PERGUNTAS_PADRAO,
-                )
-            # Migração única (out/2026): serviços passou a ser a primeira pergunta. Só roda uma
-            # vez — depois disso, a ordem definida no Manager é respeitada.
-            aplicar = conn.execute(
-                "INSERT INTO migracoes (nome) VALUES ('servicos_primeiro') "
-                "ON CONFLICT DO NOTHING RETURNING nome"
-            ).fetchone()
-            if aplicar and not vazio:
-                conn.execute(
-                    "UPDATE perguntas SET ordem = CASE WHEN campo = 'servico' "
-                    "THEN (SELECT MIN(ordem) FROM perguntas) ELSE ordem + 1 END "
-                    "WHERE campo = 'servico' "
-                    "OR ordem < (SELECT ordem FROM perguntas WHERE campo = 'servico')"
                 )
             return vazio
 
