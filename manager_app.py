@@ -881,6 +881,8 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         self.e_meta_token, _ = self._field(self.card_meta, "Access Token", secret=True)
         self.e_meta_verify, _ = self._field(self.card_meta, "Verify Token")
         self.e_meta_secret, _ = self._field(self.card_meta, "App Secret", secret=True)
+        self.e_meta_waba, _ = self._field(
+            self.card_meta, "WhatsApp Business Account ID (opcional, usado no Diagnóstico)")
 
         meta_row = ctk.CTkFrame(self.card_meta, fg_color="transparent")
         meta_row.pack(fill="x", padx=18, pady=(0, 16))
@@ -969,6 +971,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_TOKEN": self.e_meta_token,
             "META_VERIFY_TOKEN": self.e_meta_verify,
             "META_APP_SECRET": self.e_meta_secret,
+            "META_WABA_ID": self.e_meta_waba,
             "NGROK_AUTH_TOKEN": self.e_ngrok_token,
             "NGROK_DOMAIN": self.e_ngrok_domain,
             "DATABASE_URL": self.e_db_url,
@@ -992,6 +995,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "META_TOKEN": self.e_meta_token.get().strip(),
             "META_VERIFY_TOKEN": self.e_meta_verify.get().strip(),
             "META_APP_SECRET": self.e_meta_secret.get().strip(),
+            "META_WABA_ID": self.e_meta_waba.get().strip(),
             "NGROK_AUTH_TOKEN": self.e_ngrok_token.get().strip(),
             "NGROK_DOMAIN": self.e_ngrok_domain.get().strip(),
             "DATABASE_URL": self.e_db_url.get().strip(),
@@ -1158,6 +1162,100 @@ class TutorialTab(ctk.CTkScrollableFrame):
                         anchor="w", padx=22, pady=(0, 2))
 
 
+# ── Tab: Diagnóstico ──────────────────────────────────────────
+_COR_STATUS = {"ok": C_SUCCESS, "aviso": "#B45309", "erro": C_DANGER}
+_ROTULO_STATUS = {"ok": "OK", "aviso": "ATENÇÃO", "erro": "ERRO"}
+
+
+class DiagnosticoTab(ctk.CTkScrollableFrame):
+    """Confere banco, Meta, webhook, bot e túnel de uma vez. As consultas rodam numa
+    thread para a janela não travar enquanto a Meta responde."""
+
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=C_BG, scrollbar_button_color=C_BORDER,
+                         scrollbar_button_hover_color=C_MUTED)
+        self._build()
+
+    def _build(self):
+        page_header(self, "Diagnóstico",
+                    "O bot não responde? Rode as checagens e veja o que está faltando.").pack(
+            anchor="w", padx=28, pady=(24, 12))
+        ctrl = ctk.CTkFrame(self, fg_color="transparent")
+        ctrl.pack(fill="x", padx=28, pady=(0, 12))
+        self.btn_run = primary_button(ctrl, "Executar diagnóstico", self._run, width=190)
+        self.btn_run.pack(side="left")
+        secondary_button(ctrl, "Abrir pasta de logs", self._open_logs, width=170).pack(
+            side="left", padx=(8, 0))
+        self.lbl_status = ctk.CTkLabel(ctrl, text="", font=F_SMALL, text_color=C_MUTED)
+        self.lbl_status.pack(side="left", padx=12)
+        self.results = ctk.CTkFrame(self, fg_color="transparent")
+        self.results.pack(fill="x", padx=28, pady=(0, 24))
+
+    def _open_logs(self):
+        from log_setup import LOG_DIR
+        LOG_DIR.mkdir(exist_ok=True)
+        os.startfile(str(LOG_DIR))
+
+    def _run(self):
+        self.btn_run.configure(state="disabled", text="Verificando...")
+        self.lbl_status.configure(text="Consultando banco, Meta e túnel...", text_color=C_MUTED)
+        for w in self.results.winfo_children():
+            w.destroy()
+        cfg = env.load()
+
+        def worker():
+            import diagnostico
+            try:
+                res = diagnostico.executar(cfg)
+                self.after(0, lambda: self._show(res))
+            except Exception as ex:
+                self.after(0, lambda: self._fail(ex))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _fail(self, ex):
+        self.btn_run.configure(state="normal", text="Executar diagnóstico")
+        self.lbl_status.configure(text=f"Falha ao executar: {ex}", text_color=C_DANGER)
+
+    def _show(self, resultados):
+        self.btn_run.configure(state="normal", text="Executar diagnóstico")
+        erros = sum(r.status == "erro" for r in resultados)
+        avisos = sum(r.status == "aviso" for r in resultados)
+        if erros:
+            self.lbl_status.configure(text=f"{erros} problema(s) encontrado(s).", text_color=C_DANGER)
+        elif avisos:
+            self.lbl_status.configure(text=f"Funcionando, com {avisos} ponto(s) de atenção.",
+                                      text_color="#B45309")
+        else:
+            self.lbl_status.configure(text="Tudo certo.", text_color=C_SUCCESS)
+        for r in resultados:
+            self._row(r)
+
+    def _row(self, r):
+        card = card_frame(self.results)
+        card.pack(fill="x", pady=(0, 8))
+        top = ctk.CTkFrame(card, fg_color="transparent")
+        top.pack(fill="x", padx=16, pady=(12, 2))
+        ctk.CTkLabel(top, text=_ROTULO_STATUS[r.status], width=70, font=("Segoe UI", 10, "bold"),
+                     text_color="#FFFFFF", fg_color=_COR_STATUS[r.status],
+                     corner_radius=6).pack(side="left")
+        ctk.CTkLabel(top, text=r.nome, font=F_SECTION, text_color=C_TEXT).pack(side="left", padx=10)
+        if r.correcao:
+            secondary_button(top, "Corrigir", lambda c=r.correcao: self._fix(c), width=100).pack(side="right")
+        ctk.CTkLabel(card, text=r.detalhe, font=F_SMALL, text_color=C_MUTED, anchor="w",
+                     justify="left", wraplength=820).pack(fill="x", padx=16, pady=(0, 12))
+
+    def _fix(self, chave):
+        import diagnostico
+        if not messagebox.askyesno("Corrigir", "Vincular o app DirecioZAP à sua conta do WhatsApp na Meta?"):
+            return
+        try:
+            messagebox.showinfo("Corrigido", diagnostico.CORRECOES[chave](env.load()))
+        except Exception as ex:
+            messagebox.showerror("Não foi possível corrigir", str(ex))
+        self._run()
+
+
 # ── App principal ─────────────────────────────────────────────
 class DirecioZAPApp(ctk.CTk):
     def __init__(self):
@@ -1200,6 +1298,7 @@ class DirecioZAPApp(ctk.CTk):
             ("perguntas", "Perguntas"),
             ("mensagens", "Mensagens"),
             ("configuracoes", "Configurações"),
+            ("diagnostico", "Diagnóstico"),
             ("tutorial", "Tutorial"),
         ]
         nav_wrap = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -1253,6 +1352,7 @@ class DirecioZAPApp(ctk.CTk):
             "perguntas":      PerguntasTab(self.content),
             "mensagens":      MensagensTab(self.content),
             "configuracoes":  ConfiguracoesTab(self.content),
+            "diagnostico":    DiagnosticoTab(self.content),
             "tutorial":       TutorialTab(self.content),
         }
 
