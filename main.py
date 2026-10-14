@@ -94,6 +94,32 @@ def _responder(phone: str, text: str) -> None:
     send_message(phone, response)
 
 
+# Mensagens que o bot não lê: o aviso vai junto com a pergunta em que o fornecedor parou.
+AVISO_AUDIO = "Ainda não consigo ouvir áudios. Por favor, responda digitando a mensagem."
+AVISO_ARQUIVO = "Ainda não consigo abrir fotos, vídeos ou arquivos. Por favor, responda digitando a mensagem."
+AVISO_OUTROS = "Por favor, responda digitando a mensagem."
+# Reação (emoji numa mensagem) e mensagens apagadas não pedem resposta.
+_TIPOS_IGNORADOS = {"reaction", "unsupported", "system", "ephemeral"}
+
+
+def _aviso_para(tipo: str) -> str:
+    tipo = (tipo or "").lower()
+    if tipo.startswith(("audio", "voice")):
+        return AVISO_AUDIO
+    if tipo.startswith(("image", "video", "document", "sticker", "application")):
+        return AVISO_ARQUIVO
+    return AVISO_OUTROS
+
+
+def _lembrar(phone: str, aviso: str) -> None:
+    try:
+        resposta = manager.lembrete(phone, aviso)
+    except Exception:
+        log.exception("Erro ao montar o lembrete para %s", mascarar(phone))
+        resposta = aviso
+    send_message(phone, resposta)
+
+
 @app.get("/")
 def health():
     return {"status": "ok"}
@@ -130,7 +156,8 @@ async def _handle_twilio(request: Request):
         return Response(status_code=200)
 
     if num_media > 0:
-        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
+        aviso = _aviso_para(form.get("MediaContentType0", ""))
+        await asyncio.to_thread(_lembrar, phone, aviso)
         return Response(status_code=200)
 
     if not text:
@@ -178,8 +205,10 @@ async def _handle_meta(request: Request):
         text = (escolha.get("id") or "").strip()
     elif msg.get("type") == "text":
         text = msg.get("text", {}).get("body", "").strip()
+    elif msg.get("type") in _TIPOS_IGNORADOS:
+        return Response(status_code=200)
     else:
-        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
+        await asyncio.to_thread(_lembrar, phone, _aviso_para(msg.get("type", "")))
         return Response(status_code=200)
 
     if not text:

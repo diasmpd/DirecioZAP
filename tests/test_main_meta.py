@@ -46,6 +46,7 @@ def _post_assinado(client, payload, secret=APP_SECRET):
 def mock_manager(monkeypatch):
     mock = MagicMock()
     mock.process.return_value = "mensagem de resposta"
+    mock.lembrete.side_effect = lambda phone, aviso: aviso
     monkeypatch.setattr("main.manager", mock)
     return mock
 
@@ -196,7 +197,7 @@ class TestWebhookIgnorados:
         resp = _post_assinado(client, _payload_midia())
         assert resp.status_code == 200
         mock_send.assert_called_once()
-        assert "texto" in mock_send.call_args[0][1].lower()
+        assert "digitando" in mock_send.call_args[0][1].lower()
         mock_manager.process.assert_not_called()
 
     def test_B_callback_de_status_ignorado(self, client, meta_provider, mock_manager, mock_send):
@@ -239,3 +240,25 @@ def test_A_toque_em_botao_ou_lista_vira_texto(client, meta_provider, mock_manage
     r = _post_assinado(client, _payload_interativo(chave, rid))
     assert r.status_code == 200
     mock_manager.process.assert_called_once_with(PHONE, rid)
+
+
+def _payload_tipo(tipo):
+    payload = _payload_midia()
+    msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    msg.pop("image")
+    msg["type"] = tipo
+    return payload
+
+
+def test_A_audio_recebe_aviso_de_audio_e_a_pergunta(client, meta_provider, mock_manager, mock_send):
+    mock_manager.lembrete.side_effect = lambda phone, aviso: f"{aviso}\n\nQual o CNPJ?"
+    _post_assinado(client, _payload_tipo("audio"))
+    texto = mock_send.call_args[0][1]
+    assert "áudios" in texto and "Qual o CNPJ?" in texto
+    mock_manager.process.assert_not_called()
+
+
+def test_B_reacao_nao_recebe_resposta(client, meta_provider, mock_manager, mock_send):
+    _post_assinado(client, _payload_tipo("reaction"))
+    mock_send.assert_not_called()
+    mock_manager.lembrete.assert_not_called()

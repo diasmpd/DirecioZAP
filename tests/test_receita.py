@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import receita
 from conversation import ConversationManager
+from opcoes import CATEGORIAS, SERVICOS
 from tests.conftest import CNPJ_VALIDO, PHONE, SAMPLE_PERGUNTAS
 from tests.test_conversation import _make_session
 
@@ -159,3 +160,26 @@ def test_A_controle_interno_nao_vai_para_o_cadastro(manager, sessao):
     manager.process(PHONE, "S")
     salvo = sessao["save_cadastro"].call_args[0][1]
     assert "_auto" not in salvo and salvo[receita.CAMPO_SITUACAO] == "ATIVA"
+
+
+# ── Lembrete para áudio/foto ───────────────────────────────────
+
+def test_A_lembrete_repete_a_pergunta_atual_sem_mudar_a_conversa(manager, sessao):
+    sessao["get_session"].return_value = _make_session("AGUARDA_contato", {"cnpj": CNPJ_VALIDO})
+    resp = manager.lembrete(PHONE, "Ainda não consigo ouvir áudios.")
+    assert resp.startswith("Ainda não consigo ouvir áudios.") and CONTATO["pergunta"] in resp
+    sessao["update_session"].assert_not_called()
+
+
+def test_A_lembrete_sem_conversa_comeca_o_cadastro(manager, sessao):
+    resp = manager.lembrete(PHONE, "Ainda não consigo ouvir áudios.")
+    assert "bem-vindo" in resp and CNPJ_P["pergunta"] in resp
+
+
+# ── Categorias ─────────────────────────────────────────────────
+
+def test_A_categorias_cobrem_todos_os_servicos_uma_vez():
+    nas_categorias = [s for _, itens in CATEGORIAS for s in itens]
+    assert sorted(nas_categorias) == sorted(SERVICOS)
+    assert len(CATEGORIAS) <= 9 and all(len(nome) <= 24 for nome, _ in CATEGORIAS)
+    assert all(len(itens) <= 10 for _, itens in CATEGORIAS)

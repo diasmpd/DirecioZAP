@@ -24,6 +24,7 @@ def client():
 def mock_manager(monkeypatch):
     mock = MagicMock()
     mock.process.return_value = "mensagem de resposta"
+    mock.lembrete.side_effect = lambda phone, aviso: aviso
     monkeypatch.setattr("main.manager", mock)
     return mock
 
@@ -100,7 +101,7 @@ class TestWebhookIgnorados:
         resp = client.post("/webhook", data=_form_midia())
         assert resp.status_code == 200
         mock_send.assert_called_once()
-        assert "texto" in mock_send.call_args[0][1].lower()
+        assert "digitando" in mock_send.call_args[0][1].lower()
         mock_manager.process.assert_not_called()
 
     def test_B_body_vazio_sem_midia_ignorado(self, client, mock_manager, mock_send):

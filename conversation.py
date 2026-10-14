@@ -13,13 +13,7 @@ from db import (
 import receita
 import selecao
 from log_setup import get_logger, mascarar
-from opcoes import (
-    ESTADOS_ATENDIDOS,
-    SERVICOS,
-    explicar_invalidos,
-    menu,
-    normalizar_servicos,
-)
+from opcoes import ESTADOS_ATENDIDOS
 from resposta import Resposta, prefixar
 from validators import (
     normalizar_cnpj,
@@ -122,8 +116,9 @@ def _mensagem_ajuda(tipo: str) -> str:
     if tipo == "estados":
         return "Exemplo: MG, SP, RJ"
     if tipo == "servicos":
-        return ("Envie os números da lista, separados por vírgula (ex: 3, 15, 22) ou uma faixa "
-                "(ex: 3 a 5). Também vale o nome do serviço (ex: gás, pintura).")
+        return ("Escolha uma categoria (toque em Ver categorias ou digite o número dela) e responda "
+                "com os números dos serviços (ex: 1, 3). Também vale digitar o nome do serviço "
+                "(ex: gás, pintura). Quando terminar, digite CONCLUIR.")
     if tipo == "estados_atendidos":
         return (f"Toque em Escolher ou digite as siglas, separadas por vírgula (ex: MG, SP). "
                 f"Atendemos: {', '.join(ESTADOS_ATENDIDOS)}. Para todas, digite TODAS.")
@@ -173,15 +168,10 @@ _BOTOES_CONFIRMACAO = [("SIM", "Confirmar"), ("NAO", "Recomeçar"), ("ALTERAR", 
 
 
 def _pergunta(p: dict, dados: dict | None = None) -> str:
-    """O texto da pergunta — para as regionais, a etapa atual da escolha (selecao.py)."""
-    tipo = (p.get("tipo") or "").lower()
-    if tipo in selecao.TIPOS:
+    """O texto da pergunta — para serviços e regionais, a etapa atual da escolha (selecao.py)."""
+    if (p.get("tipo") or "").lower() in selecao.TIPOS:
         return selecao.prompt(p, dados)
-    if tipo != "servicos":
-        return p["pergunta"]
-    # A instrução vem antes do menu: a lista de serviços é longa e o exemplo ficaria escondido no fim.
-    return (f"{p['pergunta']}\nResponda com os números, separados por vírgula (ex: 3, 15, 22)."
-            f"\n\n{menu(SERVICOS)}")
+    return p["pergunta"]
 
 
 def _com(prefixo: str, p: dict, dados: dict | None = None) -> Resposta:
@@ -233,8 +223,6 @@ def _para_salvar(dados: dict) -> dict:
 
 def _validar(text: str, tipo: str):
     tipo = (tipo or "texto").lower()
-    if tipo == "servicos":
-        return normalizar_servicos(text)
     if tipo == "cnpj":
         return normalizar_cnpj(text)
     if tipo == "email":
@@ -298,6 +286,27 @@ class ConversationManager:
             resposta = Resposta(resposta, botoes=_BOTOES_CONFIRMACAO)
         return resposta
 
+    def lembrete(self, phone: str, aviso: str) -> str:
+        """Para mensagens que o bot não lê (áudio, foto...): o aviso + a pergunta em que o
+        fornecedor está, sem mudar nada na conversa. Sem conversa aberta, começa uma."""
+        perguntas = get_perguntas()
+        if not perguntas:
+            return aviso
+        session = get_session(phone)
+        if session is None or _sessao_expirada(session) or session["state"] == "SAUDACAO":
+            return prefixar(aviso, self.process(phone, ""))
+
+        state = session["state"]
+        dados = dict(session.get("dados") or {})
+        if state.startswith(("AGUARDA_", "ALTERA_")):
+            campo = state.split("_", 1)[1]
+            pergunta_cfg = next((p for p in perguntas if p["campo"] == campo), None)
+            if pergunta_cfg:
+                return _com(aviso, pergunta_cfg, dados)
+        if state == "CONFIRMACAO":
+            return Resposta(f"{aviso}\n\n{_gerar_resumo(dados, perguntas)}", botoes=_BOTOES_CONFIRMACAO)
+        return aviso
+
     def _handle(self, phone, text, state, dados, tentativas, perguntas):
         primeira = perguntas[0]
         intencao = _detectar_intencao(text)
@@ -337,6 +346,13 @@ class ConversationManager:
 
             if intencao == "AJUDA":
                 return _com(_mensagem_ajuda(tipo), pergunta_cfg, dados)
+
+            if intencao == "VOLTAR" and em_etapas:
+                # Dentro de uma categoria de serviços, VOLTAR volta para as categorias.
+                de_volta = selecao.voltar(pergunta_cfg, dados)
+                if de_volta is not None:
+                    update_session(phone, state, dados, tentativas)
+                    return de_volta
 
             if intencao == "VOLTAR" and alterando:
                 selecao.limpar(dados)
@@ -396,9 +412,6 @@ class ConversationManager:
                 update_session(phone, state, dados, tentativas)
                 if erro:
                     return erro
-                if tipo.lower() == "servicos":
-                    return (f"Não consegui entender:\n{explicar_invalidos(text, SERVICOS)}\n\n"
-                            f"Dica: {_mensagem_ajuda(tipo)}")
                 erro = pergunta_cfg.get("msg_erro") or pergunta_cfg["pergunta"]
                 return f"{erro}\n\nDica: {_mensagem_ajuda(tipo)}"
 

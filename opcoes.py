@@ -91,6 +91,101 @@ _SERVICOS_ORIGINAIS = [
 
 SERVICOS = sorted(_SERVICOS_ORIGINAIS, key=_base)
 
+# Categorias para o fornecedor não precisar rolar os 70 serviços: no máximo 9 (a lista
+# interativa do WhatsApp tem 10 linhas e uma é o "Concluir") e nome com até 24 caracteres.
+_CATEGORIAS_ORIGINAIS = [
+    ("Apoio à obra", [
+        "Fechamento de terreno em tapume",
+        "Refeição Operacional (Café / Lanche / Almoço / Jantar)",
+        "Vistoria Cautelar",
+        "Exames médicos / Medições Ambientais",
+        "Perfuração de Poço Artesiano",
+        "Energia Provisória",
+        "Monitoramento Eletrônico",
+        "Agente de Portaria / Vigia",
+        "Acompanhamento Topográfico",
+        "Tela Fachadeira",
+    ]),
+    ("Equipamentos", [
+        "Elevador Cremalheira",
+        "Grua",
+        "Manipulador Telescópico",
+        "Munck",
+        "Retroescavadeira / Escavadeira",
+        "Guindaste",
+        "Equipamentos Leves/Pequenos",
+    ]),
+    ("Terraplenagem e fundação", [
+        "Limpeza do terreno / Supressão",
+        "Demolição",
+        "Terraplanagem",
+        "Controle Tecnológico de Solos",
+        "Contenção",
+        "Fundação Profunda Mecanizada",
+        "Fundação Profunda Manual",
+        "Consultoria de Fundação",
+        "Ensaios de Fundação",
+        "Fundação Superficial",
+    ]),
+    ("Concreto e estrutura", [
+        "Concreto Usinado",
+        "Lançamento / Adensamento / Acabamento de Concreto",
+        "Controle Tecnológico Concreto",
+        "ESTRUTURA CONVENCIONAL - Forma / Armação / Lançamento",
+        "PAREDE DE CONCRETO - Armação / Lançamento / Instalações",
+        "Estrutura Pré-moldada",
+        "Alvenaria / Muro de Divisa",
+    ]),
+    ("Infraestrutura", [
+        "Drenagem",
+        "Redes de Água / Esgoto",
+        "Rede Elétrica / Iluminação pública / Subestação definitiva",
+        "Subestação Definitiva / Entrada de Energia Definitiva",
+        "Pavimentação Asfáltica / Intertravado / Meio-fio / Calçadas",
+        "ETE",
+        "ETA",
+        "Reservatório - Fornecimento e Montagem",
+        "Reservatório - Consultoria",
+        "Reservatório - Instalações Hidráulicas",
+    ]),
+    ("Cobertura e acabamento", [
+        "Engradamento e telhamento, incluindo rufo e calhas",
+        "Impermeabilização",
+        "Assentamento Cerâmico",
+        "Gesso (Forro, bloco e Drywall)",
+        "Gesso Liso",
+        "Instalação de Piso Laminado / Vinílico",
+        "Pintura (Interna / Externa / Limpeza)",
+    ]),
+    ("Instalações", [
+        "Interfonia / CFTV / Automação",
+        "Gás",
+        "Redes de Incêndio / SDAI - Alarme e Detecção",
+        "Sistema de Pressurização / Exaustão",
+        "Instalação Elétrica Interna",
+        "Instalação Hidráulica Interna",
+    ]),
+    ("Esquadrias e serralheria", [
+        "Esquadrias de alumínio",
+        "Esquadrias Especiais (Guarda-corpo / Brise / Pele de vidro / Fora do Padrão)",
+        "Esquadrias de madeira (Porta Pronta)",
+        "Serralheria Interna",
+        "Serralheria Externa",
+        "Fechamento de Shaft (madeira)",
+    ]),
+    ("Elevador e áreas comuns", [
+        "Elevadores",
+        "Plataformas PNE (ATÉ 4M)",
+        "Consultoria de Elevador Definitivo – Suprimentos",
+        "Paisagismo",
+        "Sinalização",
+        "Quadras e Equip. de Lazer",
+        "SLQA",
+    ]),
+]
+
+CATEGORIAS = [(nome, sorted(itens, key=_base)) for nome, itens in _CATEGORIAS_ORIGINAIS]
+
 ESTADOS_ATENDIDOS = ["MG", "SP", "RJ", "BA", "PE", "DF/GO", "CE", "AM"]
 
 _TODOS = {"TODOS", "TODAS", "TODOS OS ESTADOS", "NACIONAL", "BRASIL", "TODO O BRASIL"}
@@ -141,16 +236,16 @@ def escolher(texto: str, opcoes: list[str]) -> tuple[list[str], list[str]]:
     return [opcoes[i] for i in sorted(escolhidos)], invalidos
 
 
-def explicar_invalidos(texto: str, opcoes: list[str]) -> str:
+def explicar_invalidos(texto: str, opcoes: list[str], numerar: bool = True) -> str:
     """Diz ao fornecedor o que não foi entendido — e, se o termo bate com vários itens,
-    quais são, com o número de cada um."""
+    quais são, com o número de cada um (ou só o nome, quando o número não está à vista)."""
     _, invalidos = escolher(texto, opcoes)
     bases = [_base(o) for o in opcoes]
     linhas = []
     for tok in invalidos:
         candidatos = [i for i, b in enumerate(bases) if tok in b]
         if len(candidatos) > 1:
-            opc = "\n".join(f"   {i + 1}. {opcoes[i]}" for i in candidatos[:8])
+            opc = "\n".join(f"   {f'{i + 1}.' if numerar else '•'} {opcoes[i]}" for i in candidatos[:8])
             linhas.append(f'• "{tok.lower()}" combina com mais de uma opção:\n{opc}')
         else:
             linhas.append(f'• "{tok.lower()}" não está na lista')

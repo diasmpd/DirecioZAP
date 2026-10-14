@@ -396,32 +396,71 @@ class TestMenus:
     def _perguntas(self, mock_session_module):
         mock_session_module["get_perguntas"].return_value = PERGUNTAS_MENU
 
-    def test_A_pergunta_de_servicos_traz_o_menu(self, manager, mock_session_module):
+    def test_A_pergunta_de_servicos_traz_as_categorias(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
             "AGUARDA_contato", {"razao_social": "X", "cnpj": CNPJ_FMT})
         resp = manager.process(PHONE, "c@e.com")
-        assert "Quais serviços?" in resp and "1. Acompanhamento Topográfico" in resp and "70. " in resp
+        assert "Quais serviços?" in resp and "1. Apoio à obra" in resp
+        assert resp.index("Ver categorias") < resp.index("1. Apoio à obra")  # instrução antes do menu
+        assert ("CATEGORIA 2", "Equipamentos") in resp.lista and len(resp.lista) <= 10
 
-    def test_A_servicos_por_numero(self, manager, mock_session_module):
+    def test_A_servicos_por_categoria_e_concluir(self, manager, mock_session_module):
+        base = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"}
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_servico", dict(base))
+        resp = manager.process(PHONE, "CATEGORIA 2")  # toque em "Equipamentos"
+        assert "*Equipamentos*" in resp and "Grua" in resp
+        dados = mock_session_module["update_session"].call_args[0][2]
+        assert dados["_etapa"] == "cat:1" and "servico" not in dados
+
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_servico", dados)
+        resp = manager.process(PHONE, "3, 5")
+        assert "Adicionado: Grua; Manipulador Telescópico" in resp
+        assert resp.lista[0] == ("CONCLUIR", "✓ Concluir")
+        dados = mock_session_module["update_session"].call_args[0][2]
+
+        mock_session_module["get_session"].return_value = _make_session("AGUARDA_servico", dados)
+        resp = manager.process(PHONE, "CONCLUIR")
+        assert "Quais regionais?" in resp  # próxima pergunta
+        estado, dados = mock_session_module["update_session"].call_args[0][1:3]
+        assert estado == "AGUARDA_estados"
+        assert dados["servico"] == "Grua; Manipulador Telescópico"
+        assert "_etapa" not in dados and "_parcial" not in dados
+
+    def test_A_servico_pelo_nome_sem_abrir_categoria(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
             "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
-        resp = manager.process(PHONE, "1, 2")
-        assert "1. MG" in resp  # próxima pergunta, com o menu de regionais
-        assert mock_session_module["update_session"].call_args[0][2]["servico"].count(";") == 1
+        resp = manager.process(PHONE, "gás, pintura")
+        assert "Adicionado: Gás; Pintura" in resp
+        assert mock_session_module["update_session"].call_args[0][2]["_parcial"] == [
+            "Gás", "Pintura (Interna / Externa / Limpeza)"]
+
+    def test_A_voltar_dentro_da_categoria_volta_as_categorias(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "_etapa": "cat:1"})
+        resp = manager.process(PHONE, "VOLTAR")
+        assert "1. Apoio à obra" in resp
+        estado, dados = mock_session_module["update_session"].call_args[0][1:3]
+        assert estado == "AGUARDA_servico" and "_etapa" not in dados and dados["contato"] == "c@e.com"
 
     def test_B_servico_ambiguo_explica_e_nao_avanca(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
             "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
-        resp = manager.process(PHONE, "elevador")
+        resp = manager.process(PHONE, "reservatório")
         assert "mais de uma opção" in resp
         assert mock_session_module["update_session"].call_args[0][1] == "AGUARDA_servico"
 
-    def test_A_resumo_vem_com_botoes(self, manager, mock_session_module):
+    def test_B_varios_numeros_sem_categoria_aberta(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
-            "AGUARDA_estados", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Gás"})
-        resp = manager.process(PHONE, "MG, DF")
-        assert "Resumo do cadastro" in resp and "DF/GO" in resp
-        assert [b[0] for b in resp.botoes] == ["SIM", "NAO", "ALTERAR"]
+            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
+        resp = manager.process(PHONE, "3, 15")
+        assert "uma categoria por vez" in resp
+        assert mock_session_module["update_session"].call_args[0][3] == {"servico": 1}
+
+    def test_B_concluir_sem_nada_escolhido(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
+        resp = manager.process(PHONE, "CONCLUIR")
+        assert "pelo menos um serviço" in resp
 
     def test_A_regional_tocada_pergunta_se_quer_mais(self, manager, mock_session_module):
         base = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Gás"}
@@ -440,8 +479,9 @@ class TestMenus:
 
     def test_A_pergunta_de_regionais_tem_lista_com_todas(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
-            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
-        resp = manager.process(PHONE, "gás")
+            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com",
+                                "_parcial": ["Gás"], "_etapa": "mais"})
+        resp = manager.process(PHONE, "concluir")
         assert "Quais regionais?" in resp
         assert ("TODAS", "Todas as regionais") in resp.lista and len(resp.lista) == 9
 
@@ -460,6 +500,13 @@ class TestMenus:
         resp = manager.process(PHONE, "TODAS")
         assert "Resumo do cadastro" in resp and "MG, SP, RJ, BA, PE, DF/GO, CE, AM" in resp
 
+    def test_A_resumo_vem_com_botoes(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_estados", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Gás"})
+        resp = manager.process(PHONE, "MG, DF")
+        assert "Resumo do cadastro" in resp and "DF/GO" in resp
+        assert [b[0] for b in resp.botoes] == ["SIM", "NAO", "ALTERAR"]
+
     def test_A_botao_alterar_abre_lista_de_campos(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dict(DADOS_COMPLETOS))
         resp = manager.process(PHONE, "ALTERAR")
@@ -471,4 +518,4 @@ class TestMenus:
         mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dict(DADOS_COMPLETOS))
         resp = manager.process(PHONE, "ALTERAR Serviços")
         assert mock_session_module["update_session"].call_args[0][1] == "ALTERA_servico"
-        assert "1. Acompanhamento Topográfico" in resp
+        assert "1. Apoio à obra" in resp and resp.lista
