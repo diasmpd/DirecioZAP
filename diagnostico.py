@@ -24,8 +24,24 @@ def _graph(cfg: dict) -> str:
     return f"https://graph.facebook.com/{cfg.get('META_API_VERSION') or 'v23.0'}"
 
 
+class RedeBloqueada(Exception):
+    pass
+
+
 def _get(url: str, **params) -> tuple[int, dict]:
-    r = requests.get(url, params=params, timeout=15)
+    # O token vai no header, não na URL: mensagens de erro do requests incluem a URL e
+    # acabariam mostrando o token na tela/log.
+    headers = {}
+    if "access_token" in params:
+        headers["Authorization"] = f"Bearer {params.pop('access_token')}"
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+    except requests.exceptions.SSLError:
+        raise RedeBloqueada(
+            "A rede bloqueou o acesso a graph.facebook.com (certificado do firewall no lugar "
+            "do da Meta). O bot recebe mensagens mas NÃO consegue responder nesta rede.") from None
+    except requests.RequestException as ex:
+        raise RedeBloqueada(f"Sem acesso a graph.facebook.com: {type(ex).__name__}") from None
     try:
         return r.status_code, r.json()
     except ValueError:
@@ -57,7 +73,10 @@ def checar_token(cfg: dict) -> tuple[Checagem, str | None]:
     token = cfg.get("META_TOKEN", "").strip()
     if not token:
         return Checagem("Token da Meta", ERRO, "META_TOKEN não configurado."), None
-    code, body = _get(f"{_graph(cfg)}/debug_token", input_token=token, access_token=token)
+    try:
+        code, body = _get(f"{_graph(cfg)}/debug_token", input_token=token, access_token=token)
+    except RedeBloqueada as ex:
+        return Checagem("Acesso à Meta pela rede", ERRO, str(ex)), None
     data = body.get("data") or {}
     if code != 200 or not data.get("is_valid"):
         motivo = (data.get("error") or {}).get("message") or _erro_meta(body)
@@ -184,7 +203,15 @@ def executar(cfg: dict) -> list[Checagem]:
     resultados = [checar_banco(cfg)]
     if (cfg.get("WHATSAPP_PROVIDER") or "").lower() == "meta":
         token, app_id = checar_token(cfg)
-        resultados += [token, checar_numero(cfg), checar_vinculo(cfg, app_id), checar_webhook(cfg, app_id)]
+        resultados.append(token)
+        if token.nome != "Acesso à Meta pela rede":  # sem rede para a Meta, as demais também falham
+            for checar in (lambda: checar_numero(cfg), lambda: checar_vinculo(cfg, app_id),
+                           lambda: checar_webhook(cfg, app_id)):
+                try:
+                    resultados.append(checar())
+                except RedeBloqueada as ex:
+                    resultados.append(Checagem("Acesso à Meta pela rede", ERRO, str(ex)))
+                    break
     else:
         resultados.append(Checagem("Provedor", AVISO, "Provedor Twilio: checagens da Meta puladas."))
     resultados += [checar_bot_local(), checar_tunel(cfg)]
@@ -197,7 +224,7 @@ def executar(cfg: dict) -> list[Checagem]:
 def vincular_app(cfg: dict) -> str:
     """Correção para 'Conta WhatsApp → app': assina o app na conta (POST subscribed_apps)."""
     r = requests.post(f"{_graph(cfg)}/{cfg['META_WABA_ID'].strip()}/subscribed_apps",
-                      params={"access_token": cfg.get("META_TOKEN", "")}, timeout=15)
+                      headers={"Authorization": f"Bearer {cfg.get('META_TOKEN', '')}"}, timeout=15)
     body = r.json() if r.content else {}
     if r.ok and body.get("success"):
         return "App vinculado à conta WhatsApp."

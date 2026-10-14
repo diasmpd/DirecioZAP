@@ -81,7 +81,11 @@ class Database:
                 max_size=4,
                 # Fecha conexões ociosas antes de o Neon derrubá-las ao suspender (~5 min).
                 max_idle=240,
-                kwargs={"connect_timeout": 15, "autocommit": True},
+                # keepalives: o firewall da rede corporativa derruba conexões TCP ociosas em
+                # ~2 min; um pacote a cada 30 s mantém a conexão viva.
+                kwargs={"connect_timeout": 15, "autocommit": True,
+                        "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10,
+                        "keepalives_count": 3},
                 open=True,
             )
 
@@ -113,6 +117,9 @@ class Database:
                 # repetir pega uma nova. Comandos daqui são idempotentes ou nem chegaram ao banco.
                 if tentativa + 1 == tentativas:
                     raise
+                # Se uma conexão morreu, as outras ociosas do pool provavelmente também:
+                # testa e descarta todas antes de repetir, para não pegar outra morta.
+                self._pool.check()
         return []
 
     # ── Estrutura ──────────────────────────────────────────────

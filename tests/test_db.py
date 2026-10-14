@@ -46,7 +46,7 @@ def test_A_get_cadastros_do_bot_traz_todos_em_ordem_cronologica():
 def test_A_query_repete_uma_vez_se_conexao_do_pool_morreu(monkeypatch):
     import psycopg
     base = db.Database("postgresql://x")
-    base._pool = object()  # só para ativar a repetição; _conn é substituído abaixo
+    base._pool = MagicMock()  # só para ativar a repetição; _conn é substituído abaixo
     cur = MagicMock(description=None)
     conn = MagicMock(); conn.cursor.return_value = cur
     chamadas = []
@@ -61,6 +61,7 @@ def test_A_query_repete_uma_vez_se_conexao_do_pool_morreu(monkeypatch):
     monkeypatch.setattr(base, "_conn", fake_conn)
     assert base._query("DELETE FROM sessions WHERE phone = %s", ("1",), fetch=False) == []
     assert len(chamadas) == 2
+    base._pool.check.assert_called_once()
 
 
 def test_A_perguntas_em_cache_por_60s(monkeypatch):

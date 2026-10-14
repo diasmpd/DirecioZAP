@@ -75,3 +75,16 @@ def test_A_vincular_app_faz_post(monkeypatch):
     monkeypatch.setattr(diagnostico.requests, "post", post)
     assert "vinculado" in diagnostico.vincular_app(CFG)
     assert post.call_args.args[0].endswith("/w1/subscribed_apps")
+
+
+def test_B_rede_bloqueada_vira_checagem_clara_sem_token(monkeypatch):
+    def bloqueado(*a, **k):
+        raise diagnostico.requests.exceptions.SSLError("cert ... access_token=SEGREDO")
+    monkeypatch.setattr(diagnostico.requests, "get", bloqueado)
+    monkeypatch.setattr(diagnostico, "checar_banco", lambda cfg: diagnostico.Checagem("Banco de dados", OK, ""))
+    monkeypatch.setattr(diagnostico, "checar_bot_local", lambda: diagnostico.Checagem("Bot local", OK, ""))
+    monkeypatch.setattr(diagnostico, "checar_tunel", lambda cfg: diagnostico.Checagem("Túnel", OK, ""))
+    res = diagnostico.executar({**CFG, "META_TOKEN": "SEGREDO"})
+    rede = [r for r in res if r.nome == "Acesso à Meta pela rede"]
+    assert len(rede) == 1 and rede[0].status == ERRO and "NÃO consegue responder" in rede[0].detalhe
+    assert all("SEGREDO" not in r.detalhe for r in res)
