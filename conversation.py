@@ -32,7 +32,11 @@ MAX_TENTATIVAS = 3
 
 MSGS = {
     "SAUDACAO": "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.",
-    "SUCESSO": "Cadastro realizado com sucesso! Caso a obra precise de algum serviço, eles entram em contato com você.",
+    "SUCESSO": (
+        "Cadastro realizado com sucesso! Os responsáveis pela contratação entrarão em contato com você.\n\n"
+        "Cadastre-se também no Portal do Fornecedor para ter acesso às cotações: "
+        "https://fornecedor.direcional.com.br/"
+    ),
     "REINICIO": "Sem problemas, vamos recomeçar.",
     "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
     "ERRO_SALVAR": "Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
