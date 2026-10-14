@@ -5,6 +5,7 @@ nenhum — sem arquivo de log, um erro em produção só aparece como "o bot nã
 Os logs ficam em logs/direciozap.log, ao lado do app, com rotação (5 arquivos de 1 MB).
 """
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -14,7 +15,8 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = Path(__file__).parent
 
-LOG_DIR = BASE_DIR / "logs"
+# DIRECIOZAP_LOG_DIR: os testes apontam para uma pasta temporária e não sujam o log real.
+LOG_DIR = Path(os.environ.get("DIRECIOZAP_LOG_DIR") or BASE_DIR / "logs")
 LOG_FILE = LOG_DIR / "direciozap.log"
 
 _FORMATO = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"

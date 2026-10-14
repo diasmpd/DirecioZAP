@@ -168,8 +168,22 @@ class UvicornServer:
 # caso contrário o pydantic Settings ficaria com os valores da 1ª carga.
 _BOT_MODULES = (
     "main", "config", "conversation", "whatsapp",
-    "db", "excel_writer", "validators",
+    "db", "excel_writer", "validators", "notificacao",
 )
+
+_MSG_SEGUNDO_PLANO = (
+    "O bot já está rodando em segundo plano (tarefa agendada \"DirecioZAP Bot\").\n\n"
+    "Não é preciso iniciá-lo aqui. Para voltar a usar só o Manager, rode:\n"
+    "register_task.ps1 -Remove"
+)
+
+
+def bot_em_segundo_plano() -> bool:
+    """A porta 3000 responde, mas não foi este Manager que subiu o bot."""
+    try:
+        return requests.get("http://127.0.0.1:3000/", timeout=2).ok
+    except requests.RequestException:
+        return False
 
 
 class BotController:
@@ -190,6 +204,8 @@ class BotController:
     def start(self) -> str:
         if self.running:
             return "O bot já está em execução."
+        if bot_em_segundo_plano():
+            return _MSG_SEGUNDO_PLANO
         try:
             sys.path.insert(0, str(BASE_DIR))
             os.chdir(str(BASE_DIR))
@@ -1268,9 +1284,11 @@ class DirecioZAPApp(ctk.CTk):
         bot.set_callback(self._update_bot_status)
         self._active_tab = None
         self._nav_btns = {}
+        self._segundo_plano = False
 
         self._build()
         self._show("perguntas")
+        self.after(500, self._poll_segundo_plano)
 
     def _build(self):
         # Sidebar
@@ -1377,7 +1395,10 @@ class DirecioZAPApp(ctk.CTk):
             self.update()
             msg = bot.start()
             self.btn_bot.configure(state="normal")
-            if "Erro" in msg:
+            if msg == _MSG_SEGUNDO_PLANO:
+                messagebox.showinfo("Bot em segundo plano", msg)
+                self._update_bot_status()
+            elif "Erro" in msg:
                 messagebox.showerror("Erro ao iniciar bot", msg)
 
     def _update_bot_status(self):
@@ -1390,11 +1411,29 @@ class DirecioZAPApp(ctk.CTk):
                 self.lbl_ngrok.configure(text=url)
             else:
                 self.lbl_ngrok.configure(text=url or "")
+        elif self._segundo_plano:
+            self.dot.configure(text="●  Em segundo plano (tarefa)", text_color="#4ADE80")
+            self.btn_bot.configure(text="Iniciar Bot", fg_color=C_SIDEBAR_ACTIVE,
+                                    hover_color=C_SIDEBAR_HOVER)
+            self.lbl_ngrok.configure(text="Rodando pela tarefa agendada.")
         else:
             self.dot.configure(text="●  Parado", text_color="#F87171")
             self.btn_bot.configure(text="Iniciar Bot", fg_color=C_SUCCESS,
                                     hover_color=C_SUCCESS_HOVER)
             self.lbl_ngrok.configure(text="")
+
+    def _poll_segundo_plano(self):
+        """Atualiza o card de status quando o bot roda pela tarefa agendada (sem bloquear a UI)."""
+        def worker():
+            ativo = (not bot.running) and bot_em_segundo_plano()
+            self.after(0, lambda: self._set_segundo_plano(ativo))
+        threading.Thread(target=worker, daemon=True).start()
+        self.after(15000, self._poll_segundo_plano)
+
+    def _set_segundo_plano(self, ativo: bool):
+        if ativo != self._segundo_plano:
+            self._segundo_plano = ativo
+            self._update_bot_status()
 
     def _open_ngrok(self):
         url = bot.ngrok_url

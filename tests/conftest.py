@@ -2,6 +2,7 @@
 Fixtures compartilhadas entre todos os testes.
 """
 import os
+import tempfile
 import pytest
 from unittest.mock import MagicMock
 
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock
 os.environ.setdefault("WHATSAPP_PROVIDER", "Twilio")
 # Nunca mandar e-mail de verdade nos testes, mesmo que o .env tenha NOTIFY_EMAIL.
 os.environ["NOTIFY_EMAIL"] = ""
+os.environ["DIRECIOZAP_LOG_DIR"] = tempfile.mkdtemp(prefix="direciozap-logs-")
 os.environ.setdefault("TWILIO_ACCOUNT_SID", "ACtest000000000000000000000000000000")
 os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_auth_token")
 os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")

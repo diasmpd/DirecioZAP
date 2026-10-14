@@ -252,7 +252,25 @@ Documentacao completa embutida no aplicativo.
 
 ---
 
-## Rodando o Bot Manualmente (sem o Manager)
+## Rodando em Segundo Plano (sem o Manager)
+
+Para o bot responder sem precisar deixar o Manager aberto, registre a tarefa agendada:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File register_task.ps1          # registra e inicia
+powershell -ExecutionPolicy Bypass -File register_task.ps1 -Remove  # remove
+```
+
+A tarefa "DirecioZAP Bot" roda `run_bot.py` com `pythonw` (sem janela) a cada logon do Windows:
+sobe o bot na porta 3000, abre o túnel ngrok (ou reaproveita um já aberto) e o reabre se cair; se o
+bot parar, a tarefa o reinicia em 1 minuto. Se o Manager já estiver rodando o bot, ela espera a porta
+liberar, e o Manager mostra "Em segundo plano" enquanto a tarefa estiver ativa.
+
+Só funciona com o PC ligado e o usuário logado (o aviso por e-mail usa o Outlook da sessão). Evite
+que o PC entre em suspensão: em Configurações > Energia, deixe "Suspender" como "Nunca" quando
+conectado à energia. Logs em `logs/direciozap.log`; problemas do túnel em `logs/ngrok.log`.
+
+## Rodando o Bot Manualmente (para desenvolvimento)
 
 ```bash
 # Terminal 1 — Bot
@@ -366,10 +384,13 @@ Cobertura:
 | `META_PHONE_NUMBER_ID` | Se Meta | ID do numero no Meta |
 | `META_TOKEN` | Se Meta | Access Token da API Meta |
 | `META_VERIFY_TOKEN` | Se Meta | Token de verificacao do webhook |
+| `META_APP_SECRET` | Se Meta | App Secret (valida a assinatura dos webhooks) |
+| `META_WABA_ID` | Nao | ID da conta do WhatsApp Business (usado pelo Diagnostico) |
 | `NGROK_AUTH_TOKEN` | Recomendado | Token de autenticacao do ngrok |
 | `NGROK_DOMAIN` | Nao | Dominio estatico ngrok |
 | `DATABASE_URL` | Sim | Connection string do Postgres (Neon) |
 | `VERIFY_TOKEN` | Sim | Token para proteger `/exportar` |
+| `NOTIFY_EMAIL` | Nao | E-mail(s) avisados pelo Outlook a cada cadastro concluido |
 
 ---
 
