@@ -224,3 +224,18 @@ class TestFalhaNoProcessamento:
         assert resp.status_code == 200
         mock_send.assert_called_once()
         assert "problema técnico" in mock_send.call_args[0][1]
+
+
+def _payload_interativo(reply_key, reply_id):
+    p = _payload_texto()
+    msg = p["entry"][0]["changes"][0]["value"]["messages"][0]
+    msg.pop("text"); msg["type"] = "interactive"; msg["id"] = f"wamid.{reply_id}"
+    msg["interactive"] = {"type": reply_key, reply_key: {"id": reply_id, "title": "x"}}
+    return p
+
+
+@pytest.mark.parametrize("chave, rid", [("button_reply", "SIM"), ("list_reply", "ALTERAR Serviços")])
+def test_A_toque_em_botao_ou_lista_vira_texto(client, meta_provider, mock_manager, mock_send, chave, rid):
+    r = _post_assinado(client, _payload_interativo(chave, rid))
+    assert r.status_code == 200
+    mock_manager.process.assert_called_once_with(PHONE, rid)

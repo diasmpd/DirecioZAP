@@ -3,6 +3,7 @@ Testes A/B — whatsapp.py (cliente Twilio WhatsApp)
 A = envio bem-sucedido
 B = falhas de rede / API
 """
+import pytest
 from unittest.mock import MagicMock, patch
 import requests
 
@@ -80,3 +81,48 @@ class TestEnvioWhatsApp:
     def test_B_nao_lanca_excecao_em_falha(self):
         with patch("whatsapp.requests.post", side_effect=Exception("erro genérico")):
             assert send_message(PHONE, TEXT) is False
+
+
+# ─── Mensagens interativas (Meta) ──────────────────────────────
+
+from conversation import Resposta
+import whatsapp
+
+
+@pytest.fixture
+def meta(monkeypatch):
+    monkeypatch.setattr("whatsapp.settings.WHATSAPP_PROVIDER", "Meta")
+    post = MagicMock(return_value=MagicMock(ok=True))
+    monkeypatch.setattr("whatsapp._http.post", post)
+    return post
+
+
+def test_A_botoes_viram_interactive_button(meta):
+    whatsapp.send_message("5531", Resposta("Resumo", botoes=[("SIM", "Confirmar"), ("NAO", "Recomeçar")]))
+    body = meta.call_args.kwargs["json"]
+    assert body["type"] == "interactive" and body["interactive"]["type"] == "button"
+    assert [b["reply"]["id"] for b in body["interactive"]["action"]["buttons"]] == ["SIM", "NAO"]
+
+
+def test_A_lista_vira_interactive_list_com_titulos_cortados(meta):
+    whatsapp.send_message("5531", Resposta("Qual?", lista=[("ALTERAR X", "Um título bem comprido demais aqui")]))
+    row = meta.call_args.kwargs["json"]["interactive"]["action"]["sections"][0]["rows"][0]
+    assert row["id"] == "ALTERAR X" and len(row["title"]) <= 24
+
+
+def test_A_texto_longo_vai_antes_e_botoes_com_corpo_curto(meta):
+    whatsapp.send_message("5531", Resposta("x" * 1500, botoes=[("SIM", "Confirmar")]))
+    primeiro, segundo = [c.kwargs["json"] for c in meta.call_args_list]
+    assert primeiro["type"] == "text" and len(primeiro["text"]["body"]) == 1500
+    assert segundo["interactive"]["body"]["text"] == "Escolha uma opção:"
+
+
+def test_B_interativo_recusado_cai_para_texto(meta):
+    meta.side_effect = [MagicMock(ok=False, status_code=400, text="erro"), MagicMock(ok=True)]
+    assert whatsapp.send_message("5531", Resposta("Resumo", botoes=[("SIM", "Confirmar")])) is True
+    assert meta.call_args.kwargs["json"]["type"] == "text"
+
+
+def test_A_texto_simples_continua_text(meta):
+    whatsapp.send_message("5531", "olá")
+    assert meta.call_args.kwargs["json"] == {"messaging_product": "whatsapp", "to": "5531", "type": "text", "text": {"body": "olá"}}

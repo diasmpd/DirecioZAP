@@ -57,8 +57,8 @@ PERGUNTAS_PADRAO = [
     (1, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
     (2, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
     (3, "contato", "Contato", "Qual o contato principal? (telefone ou e-mail):", "contato", "Formato inválido."),
-    (4, "servico", "Serviço", "Que tipo de serviço sua empresa oferece?", "texto", None),
-    (5, "estados", "Estados", "Em quais estados atuam? (ex: MG, SP):", "estados", "Siglas inválidas."),
+    (4, "servico", "Serviços", "Quais serviços sua empresa oferece? Pode escolher mais de um.", "servicos", None),
+    (5, "estados", "Regionais", "Em quais regionais da Direcional vocês atendem? Pode escolher mais de uma.", "estados_atendidos", None),
 ]
 
 # Colunas que o Manager pode gravar em perguntas — nomes de coluna não podem vir de fora sem filtro.

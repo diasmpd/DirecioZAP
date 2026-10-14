@@ -11,6 +11,14 @@ from db import (
     update_session,
 )
 from log_setup import get_logger, mascarar
+from opcoes import (
+    ESTADOS_ATENDIDOS,
+    SERVICOS,
+    explicar_invalidos,
+    menu,
+    normalizar_estados_atendidos,
+    normalizar_servicos,
+)
 from validators import (
     normalizar_cnpj,
     normalizar_contato,
@@ -107,6 +115,11 @@ def _mensagem_ajuda(tipo: str) -> str:
         return "Exemplo de e-mail: contato@empresa.com"
     if tipo == "estados":
         return "Exemplo: MG, SP, RJ"
+    if tipo == "servicos":
+        return ("Envie os números da lista, separados por vírgula (ex: 3, 15, 22) ou uma faixa "
+                "(ex: 3 a 5). Também vale o nome do serviço (ex: gás, pintura).")
+    if tipo == "estados_atendidos":
+        return f"Envie os números ou as siglas, separados por vírgula (ex: MG, SP). Atendemos: {', '.join(ESTADOS_ATENDIDOS)}."
     return "Responda com um texto curto e direto."
 
 
@@ -148,8 +161,45 @@ def _campo_por_alteracao(text: str, perguntas: list[dict]) -> str | None:
     return None
 
 
+class Resposta(str):
+    """Texto da resposta + elementos interativos opcionais do WhatsApp.
+
+    É um str para o resto do código (e os testes) continuar tratando a resposta como texto;
+    quem envia (whatsapp.py) usa `botoes` (até 3, título até 20 caracteres) ou `lista`
+    (até 10 itens) quando o provedor suporta, e cai no texto puro quando não.
+    O id de um botão/item volta no webhook como se o fornecedor tivesse digitado aquele texto.
+    """
+
+    def __new__(cls, texto: str, botoes=None, lista=None, lista_botao: str = "Escolher"):
+        obj = super().__new__(cls, texto)
+        obj.botoes = botoes or []          # [(id, título)]
+        obj.lista = lista or []            # [(id, título)]
+        obj.lista_botao = lista_botao
+        return obj
+
+
+# Tipos de pergunta com lista fechada de respostas: o menu numerado vai junto da pergunta.
+_MENUS = {"servicos": SERVICOS, "estados_atendidos": ESTADOS_ATENDIDOS}
+
+_RESUMO_TITULO = "Resumo do cadastro:"
+_BOTOES_CONFIRMACAO = [("SIM", "Confirmar"), ("NAO", "Recomeçar"), ("ALTERAR", "Alterar um dado")]
+
+
+def _pergunta(p: dict) -> str:
+    opcoes = _MENUS.get((p.get("tipo") or "").lower())
+    if not opcoes:
+        return p["pergunta"]
+    instrucao = ("Responda com os números, separados por vírgula (ex: 3, 15, 22)."
+                 if len(opcoes) > 10 else "Responda com os números ou as siglas (ex: 1, 3).")
+    return f"{p['pergunta']}\n\n{menu(opcoes)}\n\n{instrucao}"
+
+
 def _validar(text: str, tipo: str):
     tipo = (tipo or "texto").lower()
+    if tipo == "servicos":
+        return normalizar_servicos(text)
+    if tipo == "estados_atendidos":
+        return normalizar_estados_atendidos(text)
     if tipo == "cnpj":
         return normalizar_cnpj(text)
     if tipo == "email":
@@ -168,13 +218,13 @@ def _validar(text: str, tipo: str):
 
 
 def _gerar_resumo(dados: dict, perguntas: list[dict]) -> str:
-    linhas = ["Resumo do cadastro:\n"]
+    linhas = [f"{_RESUMO_TITULO}\n"]
     for p in perguntas:
         label = p.get("label") or p["campo"]
         linhas.append(f"• {label}: {dados.get(p['campo'], '')}")
     linhas.append(
-        "\nAs informações estão corretas? Responda S para confirmar ou N para recomeçar."
-        "\nSe preferir, você também pode digitar: ALTERAR CNPJ, ALTERAR CONTATO, ALTERAR SERVIÇO..."
+        "\nAs informações estão corretas? Toque em um dos botões abaixo"
+        " (ou responda S para confirmar, N para recomeçar, ou ALTERAR + campo, ex: ALTERAR CNPJ)."
     )
     return "\n".join(linhas)
 
@@ -207,7 +257,11 @@ class ConversationManager:
         dados = dict(session.get("dados") or {})
         tentativas = dict(session.get("tentativas") or {})
 
-        return self._handle(phone, text, state, dados, tentativas, perguntas)
+        resposta = self._handle(phone, text, state, dados, tentativas, perguntas)
+        # Toda resposta que traz o resumo pede confirmação: vai com os botões.
+        if _RESUMO_TITULO in resposta and not getattr(resposta, "botoes", None):
+            resposta = Resposta(resposta, botoes=_BOTOES_CONFIRMACAO)
+        return resposta
 
     def _handle(self, phone, text, state, dados, tentativas, perguntas):
         primeira = perguntas[0]
@@ -221,15 +275,15 @@ class ConversationManager:
             delete_session(phone)
             create_session(phone)
             update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-            return f"{MSGS['REINICIO']}\n\n{primeira['pergunta']}"
+            return f"{MSGS['REINICIO']}\n\n{_pergunta(primeira)}"
 
         if intencao == "AJUDA" and state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return f"{MSGS['AJUDA_GERAL']}\n\n{primeira['pergunta']}"
+            return f"{MSGS['AJUDA_GERAL']}\n\n{_pergunta(primeira)}"
 
         if state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return f"{MSGS['SAUDACAO']}\nVou te guiar rapidinho no cadastro.\n\n{primeira['pergunta']}"
+            return f"{MSGS['SAUDACAO']}\nVou te guiar rapidinho no cadastro.\n\n{_pergunta(primeira)}"
 
         if state.startswith(("AGUARDA_", "ALTERA_")):
             # ALTERA_<campo>: correção de um único campo pedida no resumo; ao responder,
@@ -242,10 +296,10 @@ class ConversationManager:
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-                return f"{MSGS['SAUDACAO']}\n\n{primeira['pergunta']}"
+                return f"{MSGS['SAUDACAO']}\n\n{_pergunta(primeira)}"
 
             if intencao == "AJUDA":
-                return f"{_mensagem_ajuda(pergunta_cfg['tipo'])}\n\n{pergunta_cfg['pergunta']}"
+                return f"{_mensagem_ajuda(pergunta_cfg['tipo'])}\n\n{_pergunta(pergunta_cfg)}"
 
             if intencao == "VOLTAR" and alterando:
                 tentativas.pop(campo, None)
@@ -255,7 +309,7 @@ class ConversationManager:
             if intencao == "VOLTAR":
                 idx = next(i for i, p in enumerate(perguntas) if p["campo"] == campo)
                 if idx == 0:
-                    return f"Você está na primeira pergunta.\n\n{pergunta_cfg['pergunta']}"
+                    return f"Você está na primeira pergunta.\n\n{_pergunta(pergunta_cfg)}"
 
                 destino = perguntas[idx - 1]
                 limpar = [p["campo"] for p in perguntas[idx - 1:]]
@@ -264,7 +318,7 @@ class ConversationManager:
                     tentativas.pop(c, None)
 
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
-                return f"Sem problemas, vamos corrigir juntos.\n\n{destino['pergunta']}"
+                return f"Sem problemas, vamos corrigir juntos.\n\n{_pergunta(destino)}"
 
             valor = _validar(text, pergunta_cfg["tipo"])
             if valor is None:
@@ -281,6 +335,11 @@ class ConversationManager:
                     delete_session(phone)
                     return MSGS["MAX_TENTATIVAS"]
                 update_session(phone, state, dados, tentativas)
+                opcoes = _MENUS.get((pergunta_cfg.get("tipo") or "").lower())
+                if opcoes:
+                    detalhe = explicar_invalidos(text, opcoes)
+                    return (f"Não consegui entender:\n{detalhe}\n\n"
+                            f"Dica: {_mensagem_ajuda(pergunta_cfg['tipo'])}")
                 erro = pergunta_cfg.get("msg_erro") or pergunta_cfg["pergunta"]
                 return f"{erro}\n\nDica: {_mensagem_ajuda(pergunta_cfg['tipo'])}"
 
@@ -295,7 +354,7 @@ class ConversationManager:
             if idx + 1 < len(perguntas):
                 proxima = perguntas[idx + 1]
                 update_session(phone, f"AGUARDA_{proxima['campo']}", dados, tentativas)
-                return proxima["pergunta"]
+                return _pergunta(proxima)
 
             update_session(phone, "CONFIRMACAO", dados, tentativas)
             return _gerar_resumo(dados, perguntas)
@@ -323,12 +382,17 @@ class ConversationManager:
                         "Perfeito, vamos ajustar só esse ponto.\n"
                         f"{label} atual: {dados.get(campo_alvo, '')}\n"
                         "(Digite VOLTAR para manter o valor atual.)\n\n"
-                        f"{pergunta_alvo['pergunta']}"
+                        f"{_pergunta(pergunta_alvo)}"
                     )
 
-                return (
-                    "Não identifiquei qual campo você quer alterar.\n"
-                    "Tente algo como: ALTERAR CNPJ, ALTERAR CONTATO ou ALTERAR ESTADOS."
+                # "Alterar um dado" (botão) ou "ALTERAR" sem campo: lista dos campos para tocar.
+                so_o_verbo = len(_texto_base(text).split()) == 1
+                return Resposta(
+                    ("Qual informação você quer alterar?\n" if so_o_verbo
+                     else "Não identifiquei qual campo você quer alterar.\n")
+                    + "Toque em \"Escolher\" ou digite, por exemplo: ALTERAR CNPJ.",
+                    lista=[(f"ALTERAR {p.get('label') or p['campo']}", (p.get("label") or p["campo"])[:24])
+                           for p in perguntas[:10]],
                 )
 
             if resp == "SIM":
@@ -349,7 +413,7 @@ class ConversationManager:
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-                return f"{MSGS['REINICIO']}\n\n{primeira['pergunta']}"
+                return f"{MSGS['REINICIO']}\n\n{_pergunta(primeira)}"
             return (
                 f"{MSGS['CONFIRMACAO_INVALIDA']}\n"
                 "Você também pode digitar ALTERAR + campo (ex: ALTERAR CNPJ).\n\n"
@@ -360,4 +424,4 @@ class ConversationManager:
         delete_session(phone)
         create_session(phone)
         update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-        return f"{MSGS['SAUDACAO']}\n\n{primeira['pergunta']}"
+        return f"{MSGS['SAUDACAO']}\n\n{_pergunta(primeira)}"

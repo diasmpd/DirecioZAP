@@ -171,11 +171,17 @@ async def _handle_meta(request: Request):
     if not phone:
         return Response(status_code=200)
 
-    if msg.get("type") != "text":
+    if msg.get("type") == "interactive":
+        # Toque num botão/item da lista: o id é o texto que o fornecedor "digitaria".
+        inter = msg.get("interactive") or {}
+        escolha = inter.get("button_reply") or inter.get("list_reply") or {}
+        text = (escolha.get("id") or "").strip()
+    elif msg.get("type") == "text":
+        text = msg.get("text", {}).get("body", "").strip()
+    else:
         await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
         return Response(status_code=200)
 
-    text = msg.get("text", {}).get("body", "").strip()
     if not text:
         return Response(status_code=200)
 

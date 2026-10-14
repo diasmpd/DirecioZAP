@@ -79,7 +79,7 @@ F_BODY     = ("Segoe UI", 11)
 F_SMALL    = ("Segoe UI", 10)
 F_MONO     = ("Consolas", 10)
 
-TIPOS_VALIDOS = ["texto", "cnpj", "email", "telefone", "contato", "estados"]
+TIPOS_VALIDOS = ["texto", "cnpj", "email", "telefone", "contato", "estados", "servicos", "estados_atendidos"]
 
 
 # ── EnvManager ────────────────────────────────────────────────
@@ -168,7 +168,7 @@ class UvicornServer:
 # caso contrário o pydantic Settings ficaria com os valores da 1ª carga.
 _BOT_MODULES = (
     "main", "config", "conversation", "whatsapp",
-    "db", "excel_writer", "validators", "notificacao",
+    "db", "excel_writer", "validators", "notificacao", "opcoes",
 )
 
 _MSG_SEGUNDO_PLANO = (
