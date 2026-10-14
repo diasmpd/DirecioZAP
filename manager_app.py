@@ -927,6 +927,16 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
         ctk.CTkLabel(c_vt, text="Gere qualquer string segura. Ex: use um UUID.",
                      font=F_SMALL, text_color=C_MUTED).pack(anchor="w", padx=18, pady=(0, 16))
 
+        # Aviso por e-mail
+        c_nt = self._card("Aviso de novo cadastro (e-mail)")
+        self.e_notify, _ = self._field(c_nt, "E-mail(s) que recebem o aviso (separe por vírgula)")
+        nt_row = ctk.CTkFrame(c_nt, fg_color="transparent")
+        nt_row.pack(fill="x", padx=18, pady=(0, 16))
+        secondary_button(nt_row, "Enviar e-mail de teste", self._test_email, width=180).pack(side="left")
+        self.lbl_nt_test = ctk.CTkLabel(nt_row, text="Enviado pelo Outlook deste computador.",
+                                        font=F_SMALL, text_color=C_MUTED)
+        self.lbl_nt_test.pack(side="left", padx=10)
+
         self.lbl_save = feedback_label(self)
         self.lbl_save.pack(anchor="w", padx=28, pady=(0, 6))
 
@@ -963,6 +973,7 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "NGROK_DOMAIN": self.e_ngrok_domain,
             "DATABASE_URL": self.e_db_url,
             "VERIFY_TOKEN": self.e_verify,
+            "NOTIFY_EMAIL": self.e_notify,
         }
         for key, entry in mapping.items():
             val = cfg.get(key, "")
@@ -985,11 +996,28 @@ class ConfiguracoesTab(ctk.CTkScrollableFrame):
             "NGROK_DOMAIN": self.e_ngrok_domain.get().strip(),
             "DATABASE_URL": self.e_db_url.get().strip(),
             "VERIFY_TOKEN": self.e_verify.get().strip(),
+            "NOTIFY_EMAIL": self.e_notify.get().strip(),
         }
         updates = {k: v for k, v in updates.items() if v}
         env.save(updates)
         self.lbl_save.configure(text="Configurações salvas com sucesso.", text_color=C_SUCCESS)
         self.after(3000, lambda: self.lbl_save.configure(text=""))
+
+    def _test_email(self):
+        from notificacao import destinatarios, enviar_outlook
+        para = destinatarios(self.e_notify.get())
+        if not para:
+            self.lbl_nt_test.configure(text="Preencha ao menos um e-mail.", text_color=C_DANGER)
+            return
+        self.lbl_nt_test.configure(text="Enviando...", text_color=C_MUTED)
+        self.update()
+        try:
+            enviar_outlook(para, "[TESTE] DirecioZAP — aviso de novo cadastro",
+                           "<p>Teste do aviso de novo cadastro do DirecioZAP. Pode ignorar.</p>")
+            self.lbl_nt_test.configure(text=f"Enviado para {', '.join(para)}.", text_color=C_SUCCESS)
+        except Exception as ex:
+            self.lbl_nt_test.configure(text=f"Falhou (o Outlook está instalado e configurado?): {ex}",
+                                       text_color=C_DANGER)
 
     def _test_db(self):
         url = self.e_db_url.get().strip()

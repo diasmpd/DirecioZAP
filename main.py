@@ -1,7 +1,9 @@
+import asyncio
 import hashlib
 import hmac
 import json
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
@@ -9,10 +11,39 @@ from fastapi.responses import PlainTextResponse, Response
 from config import settings
 from conversation import MSGS, ConversationManager
 from excel_writer import gerar_excel
-from db import get_cadastros, get_todas_perguntas
+from db import delete_sessoes_expiradas, get_cadastros, get_todas_perguntas
 from whatsapp import send_message
+from log_setup import configurar_logs, get_logger, mascarar
 
-app = FastAPI(title="DirecioZap Bot")
+configurar_logs()
+log = get_logger("webhook")
+
+_INTERVALO_LIMPEZA_S = 3600
+
+
+async def _limpar_sessoes_periodicamente():
+    """Conversas abandonadas há mais de 24h são apagadas de hora em hora, como a política
+    de privacidade promete — antes só sumiam se o mesmo número voltasse a escrever."""
+    while True:
+        try:
+            n = await asyncio.to_thread(delete_sessoes_expiradas, 24)
+            if n:
+                log.info("Limpeza: %d sessão(ões) abandonada(s) apagada(s).", n)
+        except Exception:
+            log.exception("Falha na limpeza de sessões expiradas")
+        await asyncio.sleep(_INTERVALO_LIMPEZA_S)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    tarefa = asyncio.create_task(_limpar_sessoes_periodicamente())
+    log.info("Bot iniciado (provedor: %s).", settings.WHATSAPP_PROVIDER)
+    yield
+    tarefa.cancel()
+    log.info("Bot encerrado.")
+
+
+app = FastAPI(title="DirecioZap Bot", lifespan=lifespan)
 manager = ConversationManager()
 
 # A Meta pode reenviar o mesmo webhook; guardamos os últimos IDs para não processar duas vezes.
@@ -34,7 +65,7 @@ def _ja_processado(msg_id: str) -> bool:
 def _assinatura_meta_valida(raw_body: bytes, header: str | None) -> bool:
     """Confere o header X-Hub-Signature-256 (HMAC-SHA256 do corpo com o App Secret)."""
     if not settings.META_APP_SECRET:
-        print("[webhook] META_APP_SECRET não configurado — webhook Meta rejeitado.")
+        log.error("META_APP_SECRET não configurado — webhook Meta rejeitado.")
         return False
     if not header or not header.startswith("sha256="):
         return False
@@ -47,10 +78,11 @@ def _assinatura_meta_valida(raw_body: bytes, header: str | None) -> bool:
 def _responder(phone: str, text: str) -> None:
     """Processa a mensagem e responde. Uma falha (ex: banco de dados fora do ar) não pode
     sumir em silêncio: o fornecedor recebe um aviso para tentar de novo."""
+    log.info("Mensagem recebida de %s", mascarar(phone))
     try:
         response = manager.process(phone, text)
-    except Exception as exc:
-        print(f"[webhook] Erro ao processar mensagem de {phone}: {exc!r}")
+    except Exception:
+        log.exception("Erro ao processar mensagem de %s", mascarar(phone))
         send_message(phone, MSGS["ERRO_TECNICO"])
         return
     send_message(phone, response)
@@ -106,6 +138,7 @@ async def _handle_twilio(request: Request):
 async def _handle_meta(request: Request):
     raw_body = await request.body()
     if not _assinatura_meta_valida(raw_body, request.headers.get("X-Hub-Signature-256")):
+        log.warning("Webhook Meta com assinatura inválida rejeitado (confira META_APP_SECRET).")
         raise HTTPException(status_code=403, detail="Assinatura inválida")
 
     try:

@@ -42,7 +42,7 @@ Internamente, os dados ficam disponíveis apenas para as equipes da Direcional e
 
 6. Por quanto tempo guardamos os dados
 
-- Respostas de um cadastro não concluído deixam de ser usadas após 24 horas sem interação e são apagadas quando você volta a conversar com o DirecioZAP. Você também pode apagá-las na hora digitando CANCELAR.
+- Respostas de um cadastro não concluído são apagadas automaticamente após 24 horas sem interação. Você também pode apagá-las na hora digitando CANCELAR.
 - Cadastros concluídos são mantidos enquanto forem necessários para a finalidade de cadastro de fornecedores, ou até que você solicite a exclusão.
 
 7. Seus direitos

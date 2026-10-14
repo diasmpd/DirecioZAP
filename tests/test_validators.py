@@ -270,3 +270,20 @@ class TestEstados:
 
     def test_B_apenas_espacos(self):
         assert normalizar_estados("   ") is None
+
+
+# ─── normalizar_whatsapp_br ──────────────────────────────────
+
+from validators import normalizar_whatsapp_br
+
+
+@pytest.mark.parametrize("entrada, esperado", [
+    ("553195971053", "5531995971053"),    # wa_id da Meta sem o 9 → celular real
+    ("5531995971053", "5531995971053"),   # já tem o 9
+    ("+553195971053", "5531995971053"),
+    ("553132851000", "553132851000"),     # fixo (começa com 3): não mexe
+    ("14155238886", "14155238886"),       # outro país: não mexe
+    ("", ""),
+])
+def test_A_normalizar_whatsapp_br(entrada, esperado):
+    assert normalizar_whatsapp_br(entrada) == esperado

@@ -351,3 +351,46 @@ class TestAlterarCampoUnico:
         manager.process(PHONE, "mudar razão social")
         state = mock_session_module["update_session"].call_args[0][1]
         assert state == "ALTERA_razao_social"
+
+
+class TestConfirmacaoFlexivel:
+    DADOS = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
+
+    @pytest.mark.parametrize("texto", ["Sim!", "s.", "Sim, confirmo", "SIM 👍", "ok", "Confirmo", "Correto"])
+    def test_A_aceita_variantes_de_sim(self, manager, mock_session_module, texto):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        assert MSGS["SUCESSO"] in manager.process(PHONE, texto)
+
+    @pytest.mark.parametrize("texto", ["Não.", "nao!", "N", "não, quero corrigir"])
+    def test_A_aceita_variantes_de_nao(self, manager, mock_session_module, texto):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        resp = manager.process(PHONE, texto)
+        assert MSGS["REINICIO"] in resp
+        mock_session_module["save_cadastro"].assert_not_called()
+
+    @pytest.mark.parametrize("texto", ["sim não", "talvez", "simples", "nada"])
+    def test_B_ambiguo_ou_outra_palavra_nao_confirma(self, manager, mock_session_module, texto):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        resp = manager.process(PHONE, texto)
+        assert MSGS["CONFIRMACAO_INVALIDA"] in resp
+        mock_session_module["save_cadastro"].assert_not_called()
+
+    def test_A_cadastro_salvo_com_nono_digito(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        manager.process("553195971053", "S")
+        mock_session_module["save_cadastro"].assert_called_once_with("5531995971053", self.DADOS)
+
+
+def test_A_confirmacao_dispara_aviso_com_telefone_normalizado(manager, mock_session_module, monkeypatch):
+    aviso = MagicMock()
+    monkeypatch.setattr("conversation.notificar_novo_cadastro", aviso)
+    dados = TestConfirmacaoFlexivel.DADOS
+    mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", dados)
+    manager.process("553195971053", "S")
+    assert aviso.call_args.args[:2] == ("5531995971053", dados)
+
+
+def test_B_falha_no_aviso_nao_afeta_confirmacao(manager, mock_session_module, monkeypatch):
+    monkeypatch.setattr("conversation.notificar_novo_cadastro", MagicMock(side_effect=RuntimeError("x")))
+    mock_session_module["get_session"].return_value = _make_session("CONFIRMACAO", TestConfirmacaoFlexivel.DADOS)
+    assert MSGS["SUCESSO"] in manager.process(PHONE, "S")

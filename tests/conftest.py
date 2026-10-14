@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 # Os testes não podem depender do .env real (que hoje usa Meta).
 os.environ.setdefault("WHATSAPP_PROVIDER", "Twilio")
+# Nunca mandar e-mail de verdade nos testes, mesmo que o .env tenha NOTIFY_EMAIL.
+os.environ["NOTIFY_EMAIL"] = ""
 os.environ.setdefault("TWILIO_ACCOUNT_SID", "ACtest000000000000000000000000000000")
 os.environ.setdefault("TWILIO_AUTH_TOKEN", "test_auth_token")
 os.environ.setdefault("TWILIO_WHATSAPP_FROM", "+14155238886")
@@ -50,6 +52,13 @@ SAMPLE_PERGUNTAS = [
 @pytest.fixture
 def sample_perguntas():
     return SAMPLE_PERGUNTAS
+
+
+@pytest.fixture(autouse=True)
+def bloquear_outlook(monkeypatch):
+    mock = MagicMock()
+    monkeypatch.setattr("notificacao.enviar_outlook", mock)
+    return mock
 
 
 @pytest.fixture

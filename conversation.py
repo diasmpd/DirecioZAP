@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+import re
 import unicodedata
 
 from db import (
@@ -9,7 +10,16 @@ from db import (
     save_cadastro,
     update_session,
 )
-from validators import normalizar_cnpj, normalizar_contato, normalizar_estados
+from log_setup import get_logger, mascarar
+from notificacao import notificar_novo_cadastro
+from validators import (
+    normalizar_cnpj,
+    normalizar_contato,
+    normalizar_estados,
+    normalizar_whatsapp_br,
+)
+
+log = get_logger("conversation")
 
 MAX_TENTATIVAS = 3
 
@@ -41,6 +51,11 @@ _INTENT_CANCELAR = {"CANCELAR", "PARAR", "SAIR", "ENCERRAR", "DESISTIR"}
 _INTENT_VOLTAR = {"VOLTAR", "VOLTA"}
 _VERBOS_ALTERAR = {"ALTERAR", "MUDAR", "EDITAR", "CORRIGIR"}
 
+# Confirmação do resumo: decide pela primeira palavra, ignorando pontuação e acento,
+# para aceitar "Sim!", "s.", "Sim, confirmo" e "Não." — antes só "S"/"SIM" exatos passavam.
+_CONFIRMA_SIM = {"S", "SIM", "YES", "Y", "OK", "CONFIRMO", "CONFIRMAR", "CONFIRMADO", "CORRETO", "CERTO", "ISSO"}
+_CONFIRMA_NAO = {"N", "NAO", "NO"}
+
 
 def _texto_base(text: str) -> str:
     limpo = (text or "").strip()
@@ -66,6 +81,18 @@ def _detectar_intencao(text: str) -> str | None:
     if base in _INTENT_AJUDA:
         return "AJUDA"
 
+    return None
+
+
+def _resposta_confirmacao(text: str) -> str | None:
+    """'SIM', 'NAO' ou None. Uma resposta com sim e não ao mesmo tempo é ambígua."""
+    palavras = re.sub(r"[^A-Z0-9 ]", " ", _texto_base(text)).split()
+    if not palavras:
+        return None
+    if palavras[0] in _CONFIRMA_SIM and not _CONFIRMA_NAO & set(palavras):
+        return "SIM"
+    if palavras[0] in _CONFIRMA_NAO and not _CONFIRMA_SIM & set(palavras):
+        return "NAO"
     return None
 
 
@@ -275,7 +302,7 @@ class ConversationManager:
             return _gerar_resumo(dados, perguntas)
 
         if state == "CONFIRMACAO":
-            resp = text.strip().upper()
+            resp = _resposta_confirmacao(text)
 
             if intencao == "AJUDA":
                 return (
@@ -305,20 +332,25 @@ class ConversationManager:
                     "Tente algo como: ALTERAR CNPJ, ALTERAR CONTATO ou ALTERAR ESTADOS."
                 )
 
-            if resp in {"S", "SIM", "YES", "Y"}:
+            if resp == "SIM":
                 try:
-                    save_cadastro(phone, dados)
-                except Exception as exc:
-                    print(f"[conversation] Erro ao salvar cadastro de {phone}: {exc!r}")
+                    telefone = normalizar_whatsapp_br(phone)
+                    save_cadastro(telefone, dados)
+                except Exception:
+                    log.exception("Erro ao salvar cadastro de %s", mascarar(phone))
                     return MSGS["ERRO_SALVAR"]
                 # O cadastro já está salvo: uma falha daqui em diante não pode levar o
                 # fornecedor a confirmar de novo (o que duplicaria o registro).
                 try:
                     delete_session(phone)
-                except Exception as exc:
-                    print(f"[conversation] Cadastro salvo, mas falhou ao encerrar sessão de {phone}: {exc!r}")
+                except Exception:
+                    log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
+                try:
+                    notificar_novo_cadastro(telefone, dados, perguntas)
+                except Exception:
+                    log.exception("Falha ao preparar aviso do cadastro de %s", mascarar(phone))
                 return MSGS["SUCESSO"]
-            if resp in {"N", "NAO", "NÃO", "NO"}:
+            if resp == "NAO":
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})

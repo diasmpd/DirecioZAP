@@ -1,5 +1,8 @@
 import requests
 from config import settings
+from log_setup import get_logger, mascarar
+
+log = get_logger("whatsapp")
 
 
 def send_message(phone: str, text: str) -> bool:
@@ -25,7 +28,7 @@ def _send_via_twilio(phone: str, text: str) -> bool:
         resp.raise_for_status()
         return True
     except Exception as e:
-        print(f"[whatsapp] Erro ao enviar mensagem (Twilio) para {phone}: {e}")
+        log.error("Erro ao enviar mensagem (Twilio) para %s: %s", mascarar(phone), e)
         return False
 
 
@@ -43,8 +46,12 @@ def _send_via_meta(phone: str, text: str) -> bool:
     }
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        resp.raise_for_status()
-        return True
     except Exception as e:
-        print(f"[whatsapp] Erro ao enviar mensagem (Meta) para {phone}: {e}")
+        log.error("Erro ao enviar mensagem (Meta) para %s: %s", mascarar(phone), e)
         return False
+    if not resp.ok:
+        # O corpo traz o código da Meta (ex: 131047 fora da janela de 24h, 190 token inválido).
+        log.error("Meta recusou a mensagem para %s: HTTP %s %s",
+                  mascarar(phone), resp.status_code, resp.text[:500])
+        return False
+    return True

@@ -128,6 +128,15 @@ class Database:
     def delete_session(self, phone: str) -> None:
         self._query("DELETE FROM sessions WHERE phone = %s", (phone,), fetch=False)
 
+    def delete_sessoes_expiradas(self, horas: int = 24) -> int:
+        """Apaga conversas abandonadas. Retorna quantas foram apagadas."""
+        with psycopg.connect(self.url, connect_timeout=15) as conn:
+            cur = conn.execute(
+                "DELETE FROM sessions WHERE atualizado_em < NOW() - make_interval(hours => %s)",
+                (horas,),
+            )
+            return cur.rowcount
+
     def get_sessions(self, limit: int = 50) -> list[dict]:
         return self._query(
             "SELECT * FROM sessions ORDER BY atualizado_em DESC LIMIT %s", (limit,)
@@ -223,3 +232,7 @@ def save_cadastro(phone: str, dados: dict) -> None:
 
 def get_cadastros() -> list[dict]:
     return _get_db().get_cadastros()
+
+
+def delete_sessoes_expiradas(horas: int = 24) -> int:
+    return _get_db().delete_sessoes_expiradas(horas)

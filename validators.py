@@ -73,6 +73,20 @@ def normalizar_contato(raw: str) -> str | None:
     return None
 
 
+def normalizar_whatsapp_br(phone: str) -> str:
+    """Devolve o número do WhatsApp com o 9º dígito dos celulares brasileiros.
+
+    A Meta entrega o remetente (wa_id) de muitos celulares BR no formato antigo, sem o 9:
+    55 + DDD + 8 dígitos (ex: 553195971053 para (31) 99597-1053). Para responder, o wa_id
+    serve como está; para guardar no cadastro, usamos o número real. Só mexe em celulares
+    (8 dígitos começando por 6-9); fixos e números de outros países passam inalterados.
+    """
+    p = re.sub(r"\D", "", phone or "")
+    if len(p) == 12 and p.startswith("55") and p[4] in "6789":
+        return f"{p[:4]}9{p[4:]}"
+    return p
+
+
 def normalizar_servico(raw: str) -> str | None:
     if not raw or len(raw.strip()) < 3:
         return None

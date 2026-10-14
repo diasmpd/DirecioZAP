@@ -9,3 +9,4 @@ build/
 *.spec
 .venv/
 venv/
+logs/

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     META_APP_SECRET: Optional[str] = None
     META_API_VERSION: str = "v23.0"
 
+    # E-mails avisados a cada cadastro concluído (vírgula ou ;). Vazio = sem aviso.
+    NOTIFY_EMAIL: Optional[str] = None
+
     VERIFY_TOKEN: str
     DATABASE_URL: str
 
