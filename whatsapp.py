@@ -4,6 +4,9 @@ from log_setup import get_logger, mascarar
 
 log = get_logger("whatsapp")
 
+# Sessão HTTP reaproveitada: evita um handshake TLS novo com a Meta a cada resposta.
+_http = requests.Session()
+
 
 def send_message(phone: str, text: str) -> bool:
     if settings.WHATSAPP_PROVIDER.lower() == "meta":
@@ -45,7 +48,7 @@ def _send_via_meta(phone: str, text: str) -> bool:
         "text": {"body": text},
     }
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        resp = _http.post(url, json=payload, headers=headers, timeout=10)
     except Exception as e:
         log.error("Erro ao enviar mensagem (Meta) para %s: %s", mascarar(phone), e)
         return False

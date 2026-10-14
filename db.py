@@ -1,15 +1,24 @@
 """Acesso ao banco Postgres (Neon) — fonte única da verdade de perguntas, sessões e cadastros.
 
-Uma conexão por operação: o Neon suspende o banco após alguns minutos ocioso e derruba
-conexões abertas, então manter uma conexão viva só trocaria latência por erros de conexão
-morta. Datas e UUIDs voltam como string ISO, no mesmo formato que o resto do código já usa.
+O bot usa um pool de conexões: abrir uma conexão nova com o Neon leva de 1 a 4 s nesta
+rede (TLS + autenticação), e cada mensagem faz várias consultas — com conexão reaproveitada
+cada consulta leva ~100 ms. O Neon suspende o banco após ~5 min ocioso e derruba conexões
+abertas; em vez de testar a conexão antes de cada consulta (uma ida e volta a mais),
+a consulta é repetida uma vez numa conexão nova se a primeira estiver morta. As conexões
+são autocommit: cada comando já é uma transação, sem a ida e volta extra do COMMIT.
+O Manager, que faz poucas consultas espaçadas, abre uma conexão por operação.
+Datas e UUIDs voltam como string ISO, no mesmo formato que o resto do código já usa.
 """
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import ConnectionPool
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS perguntas (
@@ -62,22 +71,56 @@ def _serializar(row: dict) -> dict:
 
 
 class Database:
-    def __init__(self, url: str):
+    def __init__(self, url: str, pool: bool = False):
         self.url = url
+        self._pool: ConnectionPool | None = None
+        if pool:
+            self._pool = ConnectionPool(
+                url,
+                min_size=1,
+                max_size=4,
+                # Fecha conexões ociosas antes de o Neon derrubá-las ao suspender (~5 min).
+                max_idle=240,
+                kwargs={"connect_timeout": 15, "autocommit": True},
+                open=True,
+            )
+
+    @contextmanager
+    def _conn(self):
+        if self._pool is not None:
+            with self._pool.connection() as conn:
+                yield conn
+        else:
+            with psycopg.connect(self.url, connect_timeout=15) as conn:
+                yield conn
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.close()
 
     def _query(self, sql: str, params=(), fetch: bool = True) -> list[dict]:
-        with psycopg.connect(self.url, row_factory=dict_row, connect_timeout=15) as conn:
-            cur = conn.execute(sql, params)
-            if fetch and cur.description:
-                return [_serializar(r) for r in cur.fetchall()]
-            return []
+        tentativas = 2 if self._pool is not None else 1
+        for tentativa in range(tentativas):
+            try:
+                with self._conn() as conn:
+                    cur = conn.cursor(row_factory=dict_row)
+                    cur.execute(sql, params)
+                    if fetch and cur.description:
+                        return [_serializar(r) for r in cur.fetchall()]
+                    return []
+            except psycopg.OperationalError:
+                # Conexão do pool derrubada pelo Neon ao suspender: o pool já a descartou;
+                # repetir pega uma nova. Comandos daqui são idempotentes ou nem chegaram ao banco.
+                if tentativa + 1 == tentativas:
+                    raise
+        return []
 
     # ── Estrutura ──────────────────────────────────────────────
 
     def init_schema(self) -> bool:
         """Cria as tabelas que faltarem e, se não houver nenhuma pergunta, insere as padrão.
         Retorna True quando inseriu as perguntas padrão."""
-        with psycopg.connect(self.url, connect_timeout=15) as conn:
+        with self._conn() as conn:
             conn.execute(SCHEMA_SQL)
             vazio = conn.execute("SELECT NOT EXISTS (SELECT 1 FROM perguntas)").fetchone()[0]
             if vazio:
@@ -130,7 +173,7 @@ class Database:
 
     def delete_sessoes_expiradas(self, horas: int = 24) -> int:
         """Apaga conversas abandonadas. Retorna quantas foram apagadas."""
-        with psycopg.connect(self.url, connect_timeout=15) as conn:
+        with self._conn() as conn:
             cur = conn.execute(
                 "DELETE FROM sessions WHERE atualizado_em < NOW() - make_interval(hours => %s)",
                 (horas,),
@@ -192,14 +235,31 @@ class Database:
 # ── Funções usadas pelo bot (lêem DATABASE_URL do .env via config) ──
 
 _db: Database | None = None
+_db_lock = threading.Lock()
+
+# As perguntas mudam raramente (só pelo Manager) e são lidas em toda mensagem: um cache
+# curto corta uma consulta por mensagem. Uma edição no Manager vale em até 60 s.
+_CACHE_PERGUNTAS_S = 60
+_cache_perguntas: tuple[float, list[dict]] | None = None
 
 
 def _get_db() -> Database:
     global _db
-    if _db is None:
-        from config import settings
-        _db = Database(settings.DATABASE_URL)
-    return _db
+    with _db_lock:
+        if _db is None:
+            from config import settings
+            _db = Database(settings.DATABASE_URL, pool=True)
+        return _db
+
+
+def fechar() -> None:
+    """Fecha o pool (o Manager para e reinicia o bot no mesmo processo)."""
+    global _db, _cache_perguntas
+    with _db_lock:
+        if _db is not None:
+            _db.close()
+            _db = None
+        _cache_perguntas = None
 
 
 def get_session(phone: str) -> dict | None:
@@ -219,7 +279,13 @@ def delete_session(phone: str) -> None:
 
 
 def get_perguntas() -> list[dict]:
-    return _get_db().get_perguntas()
+    global _cache_perguntas
+    agora = time.monotonic()
+    if _cache_perguntas and agora - _cache_perguntas[0] < _CACHE_PERGUNTAS_S:
+        return _cache_perguntas[1]
+    perguntas = _get_db().get_perguntas()
+    _cache_perguntas = (agora, perguntas)
+    return perguntas
 
 
 def get_todas_perguntas() -> list[dict]:

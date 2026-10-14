@@ -88,6 +88,7 @@ $Args = @(
     "--hidden-import=pythoncom",
     "--collect-all=psycopg",
     "--collect-all=psycopg_binary",
+    "--collect-all=psycopg_pool",
     "--hidden-import=requests",
     "--hidden-import=anyio",
     "--hidden-import=anyio._backends._asyncio",

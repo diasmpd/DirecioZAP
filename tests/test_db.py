@@ -41,3 +41,36 @@ def test_A_get_cadastros_do_bot_traz_todos_em_ordem_cronologica():
     base._query = MagicMock(return_value=[{"id": "a"}])
     assert base.get_cadastros() == [{"id": "a"}]
     assert base._query.call_args.args[0] == "SELECT * FROM cadastros ORDER BY criado_em ASC"
+
+
+def test_A_query_repete_uma_vez_se_conexao_do_pool_morreu(monkeypatch):
+    import psycopg
+    base = db.Database("postgresql://x")
+    base._pool = object()  # só para ativar a repetição; _conn é substituído abaixo
+    cur = MagicMock(description=None)
+    conn = MagicMock(); conn.cursor.return_value = cur
+    chamadas = []
+
+    from contextlib import contextmanager
+    @contextmanager
+    def fake_conn():
+        chamadas.append(1)
+        if len(chamadas) == 1:
+            raise psycopg.OperationalError("server closed the connection")
+        yield conn
+    monkeypatch.setattr(base, "_conn", fake_conn)
+    assert base._query("DELETE FROM sessions WHERE phone = %s", ("1",), fetch=False) == []
+    assert len(chamadas) == 2
+
+
+def test_A_perguntas_em_cache_por_60s(monkeypatch):
+    fake = MagicMock(); fake.get_perguntas.return_value = [{"campo": "cnpj"}]
+    monkeypatch.setattr(db, "_get_db", lambda: fake)
+    monkeypatch.setattr(db, "_cache_perguntas", None)
+    relogio = [1000.0]
+    monkeypatch.setattr(db.time, "monotonic", lambda: relogio[0])
+    db.get_perguntas(); db.get_perguntas()
+    assert fake.get_perguntas.call_count == 1
+    relogio[0] += 61
+    db.get_perguntas()
+    assert fake.get_perguntas.call_count == 2

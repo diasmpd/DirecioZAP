@@ -11,7 +11,7 @@ from fastapi.responses import PlainTextResponse, Response
 from config import settings
 from conversation import MSGS, ConversationManager
 from excel_writer import gerar_excel
-from db import delete_sessoes_expiradas, get_cadastros, get_todas_perguntas
+from db import delete_sessoes_expiradas, fechar as fechar_banco, get_cadastros, get_todas_perguntas
 from whatsapp import send_message
 from log_setup import configurar_logs, get_logger, mascarar
 
@@ -40,6 +40,7 @@ async def lifespan(_app: FastAPI):
     log.info("Bot iniciado (provedor: %s).", settings.WHATSAPP_PROVIDER)
     yield
     tarefa.cancel()
+    fechar_banco()
     log.info("Bot encerrado.")
 
 
@@ -124,13 +125,13 @@ async def _handle_twilio(request: Request):
         return Response(status_code=200)
 
     if num_media > 0:
-        send_message(phone, "Por favor, responda apenas com texto.")
+        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
         return Response(status_code=200)
 
     if not text:
         return Response(status_code=200)
 
-    _responder(phone, text)
+    await asyncio.to_thread(_responder, phone, text)
 
     return Response(status_code=200)
 
@@ -166,14 +167,14 @@ async def _handle_meta(request: Request):
         return Response(status_code=200)
 
     if msg.get("type") != "text":
-        send_message(phone, "Por favor, responda apenas com texto.")
+        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
         return Response(status_code=200)
 
     text = msg.get("text", {}).get("body", "").strip()
     if not text:
         return Response(status_code=200)
 
-    _responder(phone, text)
+    await asyncio.to_thread(_responder, phone, text)
 
     return Response(status_code=200)
 
