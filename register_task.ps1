@@ -68,10 +68,12 @@ Remove-IfExists $botTask
 
 $action = New-ScheduledTaskAction -Execute $pythonw `
     -Argument "`"$(Join-Path $scriptDir 'avisos_pc.py')`"" -WorkingDirectory $scriptDir
-# A cada logon e, a partir dele, a cada 5 minutos enquanto a sessao estiver aberta.
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
-$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
-    -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
+# Repete a cada 5 minutos a partir de agora (sem fim), e roda tambem logo no logon.
+# A repeticao so num gatilho de logon comecaria apenas no PROXIMO logon.
+$repetir = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5)
+$noLogon = New-ScheduledTaskTrigger -AtLogOn -User $user
+$trigger = @($repetir, $noLogon)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 4) `
