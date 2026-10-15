@@ -11,13 +11,13 @@ from db import (
     update_session,
 )
 import receita
-import selecao
 from log_setup import get_logger, mascarar
 from opcoes import (
     ESTADOS_ATENDIDOS,
     SERVICOS,
     explicar_invalidos,
     menu,
+    normalizar_estados_atendidos,
     normalizar_servicos,
 )
 from resposta import Resposta, prefixar
@@ -125,8 +125,7 @@ def _mensagem_ajuda(tipo: str) -> str:
         return ("Envie os números da lista, separados por vírgula (ex: 3, 15, 22) ou uma faixa "
                 "(ex: 3 a 5). Também vale o nome do serviço (ex: gás, pintura).")
     if tipo == "estados_atendidos":
-        return (f"Toque em Escolher ou digite as siglas, separadas por vírgula (ex: MG, SP). "
-                f"Atendemos: {', '.join(ESTADOS_ATENDIDOS)}. Para todas, digite TODAS.")
+        return f"Envie os números ou as siglas, separados por vírgula (ex: MG, SP). Atendemos: {', '.join(ESTADOS_ATENDIDOS)}."
     return "Responda com um texto curto e direto."
 
 
@@ -168,24 +167,25 @@ def _campo_por_alteracao(text: str, perguntas: list[dict]) -> str | None:
     return None
 
 
+# Tipos de pergunta com lista fechada de respostas: o menu numerado vai junto da pergunta.
+_MENUS = {"servicos": SERVICOS, "estados_atendidos": ESTADOS_ATENDIDOS}
+
 _RESUMO_TITULO = "Resumo do cadastro:"
 _BOTOES_CONFIRMACAO = [("SIM", "Confirmar"), ("NAO", "Recomeçar"), ("ALTERAR", "Alterar um dado")]
 
 
-def _pergunta(p: dict, dados: dict | None = None) -> str:
-    """O texto da pergunta — para as regionais, a etapa atual da escolha (selecao.py)."""
-    tipo = (p.get("tipo") or "").lower()
-    if tipo in selecao.TIPOS:
-        return selecao.prompt(p, dados)
-    if tipo != "servicos":
+def _pergunta(p: dict) -> str:
+    opcoes = _MENUS.get((p.get("tipo") or "").lower())
+    if not opcoes:
         return p["pergunta"]
+    instrucao = ("Responda com os números, separados por vírgula (ex: 3, 15, 22)."
+                 if len(opcoes) > 10 else "Responda com os números ou as siglas (ex: 1, 3).")
     # A instrução vem antes do menu: a lista de serviços é longa e o exemplo ficaria escondido no fim.
-    return (f"{p['pergunta']}\nResponda com os números, separados por vírgula (ex: 3, 15, 22)."
-            f"\n\n{menu(SERVICOS)}")
+    return f"{p['pergunta']}\n{instrucao}\n\n{menu(opcoes)}"
 
 
-def _com(prefixo: str, p: dict, dados: dict | None = None) -> Resposta:
-    return prefixar(prefixo, _pergunta(p, dados))
+def _com(prefixo: str, p: dict) -> Resposta:
+    return prefixar(prefixo, _pergunta(p))
 
 
 def _proxima(perguntas: list[dict], dados: dict) -> dict | None:
@@ -235,6 +235,8 @@ def _validar(text: str, tipo: str):
     tipo = (tipo or "texto").lower()
     if tipo == "servicos":
         return normalizar_servicos(text)
+    if tipo == "estados_atendidos":
+        return normalizar_estados_atendidos(text)
     if tipo == "cnpj":
         return normalizar_cnpj(text)
     if tipo == "email":
@@ -327,7 +329,6 @@ class ConversationManager:
             campo = state.split("_", 1)[1]
             pergunta_cfg = next((p for p in perguntas if p["campo"] == campo), None)
             tipo = (pergunta_cfg or {}).get("tipo") or "texto"
-            em_etapas = tipo.lower() in selecao.TIPOS
 
             if pergunta_cfg is None:
                 delete_session(phone)
@@ -336,10 +337,9 @@ class ConversationManager:
                 return _com(MSGS["SAUDACAO"], primeira)
 
             if intencao == "AJUDA":
-                return _com(_mensagem_ajuda(tipo), pergunta_cfg, dados)
+                return _com(_mensagem_ajuda(tipo), pergunta_cfg)
 
             if intencao == "VOLTAR" and alterando:
-                selecao.limpar(dados)
                 tentativas.pop(campo, None)
                 update_session(phone, "CONFIRMACAO", dados, tentativas)
                 return f"Ok, mantivemos o valor anterior.\n\n{_gerar_resumo(dados, perguntas)}"
@@ -347,7 +347,7 @@ class ConversationManager:
             if intencao == "VOLTAR":
                 idx = next(i for i, p in enumerate(perguntas) if p["campo"] == campo)
                 if idx == 0:
-                    return _com("Você está na primeira pergunta.", pergunta_cfg, dados)
+                    return _com("Você está na primeira pergunta.", pergunta_cfg)
 
                 # Volta para a pergunta anterior que o fornecedor respondeu — a Razão Social
                 # preenchida pelo CNPJ não foi perguntada, então volta direto para o CNPJ.
@@ -362,28 +362,16 @@ class ConversationManager:
                 if "cnpj" not in dados:
                     dados.pop(receita.CAMPO_SITUACAO, None)
                 _marcar_auto(dados, [c for c in auto if c in dados])
-                selecao.limpar(dados)
 
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
                 return _com("Sem problemas, vamos corrigir juntos.", destino)
 
-            erro = None
-            if em_etapas:
-                resultado, conteudo = selecao.responder(pergunta_cfg, text, dados)
-                if resultado == "continua":
-                    tentativas.pop(campo, None)
-                    update_session(phone, state, dados, tentativas)
-                    return conteudo
-                valor = conteudo if resultado == "pronto" else None
-                erro = conteudo if resultado == "invalido" else None
-            else:
-                valor = _validar(text, tipo)
+            valor = _validar(text, tipo)
 
             if valor is None:
                 n = tentativas.get(campo, 0) + 1
                 tentativas[campo] = n
                 if n >= MAX_TENTATIVAS and alterando:
-                    selecao.limpar(dados)
                     tentativas.pop(campo, None)
                     update_session(phone, "CONFIRMACAO", dados, tentativas)
                     return (
@@ -394,15 +382,14 @@ class ConversationManager:
                     delete_session(phone)
                     return MSGS["MAX_TENTATIVAS"]
                 update_session(phone, state, dados, tentativas)
-                if erro:
-                    return erro
-                if tipo.lower() == "servicos":
-                    return (f"Não consegui entender:\n{explicar_invalidos(text, SERVICOS)}\n\n"
+                opcoes = _MENUS.get(tipo.lower())
+                if opcoes:
+                    detalhe = explicar_invalidos(text, opcoes)
+                    return (f"Não consegui entender:\n{detalhe}\n\n"
                             f"Dica: {_mensagem_ajuda(tipo)}")
                 erro = pergunta_cfg.get("msg_erro") or pergunta_cfg["pergunta"]
                 return f"{erro}\n\nDica: {_mensagem_ajuda(tipo)}"
 
-            selecao.limpar(dados)
             tentativas.pop(campo, None)
             dados[campo] = valor
             # Digitado pelo fornecedor: deixa de ser um valor preenchido pelo CNPJ.
@@ -438,7 +425,6 @@ class ConversationManager:
                 if campo_alvo:
                     pergunta_alvo = next(p for p in perguntas if p["campo"] == campo_alvo)
                     tentativas.pop(campo_alvo, None)
-                    selecao.limpar(dados)
                     update_session(phone, f"ALTERA_{campo_alvo}", dados, tentativas)
                     label = pergunta_alvo.get("label") or campo_alvo
                     return _com(

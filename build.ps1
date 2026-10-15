@@ -66,7 +66,6 @@ $Args = @(
     "--add-data=validators.py;.",
     "--add-data=receita.py;.",
     "--add-data=resposta.py;.",
-    "--add-data=selecao.py;.",
     "--hidden-import=customtkinter",
     "--hidden-import=PIL",
     "--hidden-import=PIL._tkinter_finder",
