@@ -15,9 +15,17 @@ log = get_logger("receita")
 
 _TIMEOUT_S = 4
 
-# Campo extra gravado no cadastro (não é pergunta): aparece no Excel e no e-mail de aviso.
+# Campos extras gravados no cadastro (não são perguntas): aparecem no Excel e no e-mail de aviso.
+# Cidade e UF da sede são pedidas no cadastro do Portal do Fornecedor.
 CAMPO_SITUACAO = "situacao_cnpj"
 LABEL_SITUACAO = "Situação na Receita"
+CAMPO_CIDADE = "cidade_receita"
+CAMPO_UF = "uf_receita"
+LABELS = {
+    CAMPO_SITUACAO: LABEL_SITUACAO,
+    CAMPO_CIDADE: "Cidade (Receita)",
+    CAMPO_UF: "UF (Receita)",
+}
 NAO_ENCONTRADO = "NÃO ENCONTRADO NA RECEITA"
 
 _http = requests.Session()

@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import MagicMock
 
 import receita
-from conversation import ConversationManager
+from conversation import ConversationManager, _aplicar_receita
 from tests.conftest import CNPJ_VALIDO, PHONE, SAMPLE_PERGUNTAS
 from tests.test_conversation import _make_session
 
@@ -159,3 +159,19 @@ def test_A_controle_interno_nao_vai_para_o_cadastro(manager, sessao):
     manager.process(PHONE, "S")
     salvo = sessao["save_cadastro"].call_args[0][1]
     assert "_auto" not in salvo and salvo[receita.CAMPO_SITUACAO] == "ATIVA"
+
+
+
+def test_A_cidade_e_uf_da_sede_sao_guardadas(sem_consulta_receita):
+    """O Portal do Fornecedor pede Cidade e Estado da empresa: vêm da Receita, sem perguntar."""
+    dados = {}
+    sem_consulta_receita.return_value = _resposta_api(200, EMPRESA_ATIVA)
+    _aplicar_receita(CNPJ_VALIDO, dados, SAMPLE_PERGUNTAS)
+    assert dados[receita.CAMPO_CIDADE] == "Belo Horizonte"
+    assert dados[receita.CAMPO_UF] == "MG"
+
+
+def test_A_cnpj_novo_sem_consulta_apaga_cidade_do_anterior():
+    dados = {receita.CAMPO_CIDADE: "Belo Horizonte", receita.CAMPO_UF: "MG"}
+    _aplicar_receita(CNPJ_VALIDO, dados, SAMPLE_PERGUNTAS)
+    assert receita.CAMPO_CIDADE not in dados and receita.CAMPO_UF not in dados

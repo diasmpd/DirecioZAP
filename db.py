@@ -257,10 +257,19 @@ class Database:
 
     # ── Cadastros concluídos ───────────────────────────────────
 
-    def save_cadastro(self, phone: str, dados: dict) -> None:
-        self._query(
-            "INSERT INTO cadastros (phone, dados) VALUES (%s, %s)",
+    def save_cadastro(self, phone: str, dados: dict) -> str:
+        """Grava o cadastro e devolve o id dele."""
+        rows = self._query(
+            "INSERT INTO cadastros (phone, dados) VALUES (%s, %s) RETURNING id",
             (phone, Jsonb(dados)),
+        )
+        return rows[0]["id"]
+
+    def completar_cadastro(self, id_: str, campos: dict) -> None:
+        """Junta campos a um cadastro já gravado (ex.: o e-mail do Portal, pedido depois)."""
+        self._query(
+            "UPDATE cadastros SET dados = dados || %s WHERE id = %s",
+            (Jsonb(campos), id_),
             fetch=False,
         )
 
@@ -337,8 +346,12 @@ def get_todas_perguntas() -> list[dict]:
     return _get_db().get_todas_perguntas()
 
 
-def save_cadastro(phone: str, dados: dict) -> None:
-    _get_db().save_cadastro(phone, dados)
+def save_cadastro(phone: str, dados: dict) -> str:
+    return _get_db().save_cadastro(phone, dados)
+
+
+def completar_cadastro(id_: str, campos: dict) -> None:
+    _get_db().completar_cadastro(id_, campos)
 
 
 def get_cadastros() -> list[dict]:

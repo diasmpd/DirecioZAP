@@ -65,6 +65,7 @@ $Args = @(
     "--add-data=excel_writer.py;.",
     "--add-data=validators.py;.",
     "--add-data=receita.py;.",
+    "--add-data=portal.py;.",
     "--add-data=resposta.py;.",
     "--hidden-import=customtkinter",
     "--hidden-import=PIL",

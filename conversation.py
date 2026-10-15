@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from db import (
+    completar_cadastro,
     create_session,
     delete_session,
     get_perguntas,
@@ -10,6 +11,7 @@ from db import (
     save_cadastro,
     update_session,
 )
+import portal
 import receita
 from log_setup import get_logger, mascarar
 from opcoes import (
@@ -34,10 +36,16 @@ MAX_TENTATIVAS = 3
 
 MSGS = {
     "SAUDACAO": "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.",
-    "SUCESSO": (
-        "Cadastro realizado com sucesso! Os responsáveis pela contratação entrarão em contato com você.\n\n"
-        "Cadastre-se também no Portal do Fornecedor para ter acesso às cotações: "
-        "https://fornecedor.direcional.com.br/"
+    "SUCESSO": "Cadastro realizado com sucesso! Os responsáveis pela contratação entrarão em contato com você.",
+    "PEDE_EMAIL_PORTAL": (
+        "Para receber as cotações, sua empresa também precisa estar no Portal do Fornecedor. "
+        "Qual e-mail devemos usar no Portal?"
+    ),
+    "EMAIL_PORTAL_OK": "Obrigado! Vamos usar *{email}* no seu cadastro do Portal do Fornecedor, onde ficam as cotações.",
+    "EMAIL_PORTAL_INVALIDO": "Não reconheci um e-mail. Envie no formato compras@suaempresa.com.br, ou toque em *Agora não*.",
+    "LINK_PORTAL": (
+        "Tudo bem! Quando quiser, cadastre-se no Portal do Fornecedor para ter acesso às cotações: "
+        f"{portal.URL}"
     ),
     "REINICIO": "Sem problemas, vamos recomeçar.",
     "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
@@ -199,12 +207,17 @@ def _aplicar_receita(cnpj: str, dados: dict, perguntas: list[dict]) -> str:
     auto = [c for c in dados.get("_auto") or [] if c != "razao_social"]
     if "razao_social" in (dados.get("_auto") or []):
         dados.pop("razao_social", None)  # veio do CNPJ anterior: não vale para o novo
-    dados.pop(receita.CAMPO_SITUACAO, None)
+    for campo in receita.LABELS:
+        dados.pop(campo, None)
 
     info = receita.consultar_cnpj(cnpj)
     aviso = ""
     if info:
         dados[receita.CAMPO_SITUACAO] = info["situacao"]
+        if info.get("municipio"):
+            dados[receita.CAMPO_CIDADE] = info["municipio"]
+        if info.get("uf"):
+            dados[receita.CAMPO_UF] = info["uf"]
         pede_razao = any(p["campo"] == "razao_social" for p in perguntas)
         if info.get("razao_social") and pede_razao and "razao_social" not in dados:
             dados["razao_social"] = info["razao_social"]
@@ -264,6 +277,64 @@ def _gerar_resumo(dados: dict, perguntas: list[dict]) -> str:
         " (ou responda S para confirmar, N para recomeçar, ou ALTERAR + campo, ex: ALTERAR CNPJ)."
     )
     return "\n".join(linhas)
+
+
+# ── E-mail do Portal (depois da confirmação; o cadastro já está salvo) ──
+
+ESTADO_EMAIL_PORTAL = "EMAIL_PORTAL"
+_BOTAO_USAR = ("USAR", "Usar este e-mail")
+_BOTAO_PULAR = ("PULAR", "Agora não")
+_PULAR = {"PULAR", "AGORA NAO", "NAO", "N", "DEPOIS", "NAO TENHO", "SEM EMAIL", "SEM E MAIL"}
+
+
+def _pedir_email_portal(dados: dict) -> Resposta:
+    """Mensagem de sucesso + pedido do e-mail; oferece o e-mail do Contato com um toque."""
+    sugestao = dados.get("_sugestao_email")
+    if sugestao:
+        return Resposta(
+            f"{MSGS['SUCESSO']}\n\n{MSGS['PEDE_EMAIL_PORTAL']}\n"
+            f"Pode ser o *{sugestao}*? Toque em *Usar este e-mail* ou envie outro.",
+            botoes=[_BOTAO_USAR, _BOTAO_PULAR],
+        )
+    return Resposta(
+        f"{MSGS['SUCESSO']}\n\n{MSGS['PEDE_EMAIL_PORTAL']}\n(ex: compras@suaempresa.com.br)",
+        botoes=[_BOTAO_PULAR],
+    )
+
+
+def _responder_email_portal(phone: str, text: str, dados: dict, tentativas: dict):
+    base = " ".join(re.sub(r"[^A-Z0-9 ]", " ", _texto_base(text)).split())
+    sugestao = dados.get("_sugestao_email")
+
+    if base in _PULAR:
+        delete_session(phone)
+        return MSGS["LINK_PORTAL"]
+
+    email = portal.normalizar_email(text)
+    if email is None and sugestao and (base == "USAR" or base.startswith("USAR ")
+                                       or _resposta_confirmacao(text) == "SIM"):
+        email = sugestao
+
+    if email is None:
+        n = tentativas.get(ESTADO_EMAIL_PORTAL, 0) + 1
+        if n >= MAX_TENTATIVAS:
+            delete_session(phone)
+            return MSGS["LINK_PORTAL"]
+        tentativas[ESTADO_EMAIL_PORTAL] = n
+        update_session(phone, ESTADO_EMAIL_PORTAL, dados, tentativas)
+        botoes = [_BOTAO_USAR, _BOTAO_PULAR] if sugestao else [_BOTAO_PULAR]
+        return Resposta(MSGS["EMAIL_PORTAL_INVALIDO"], botoes=botoes)
+
+    try:
+        completar_cadastro(dados["_cadastro_id"], {portal.CAMPO_EMAIL: email})
+    except Exception:
+        log.exception("Erro ao gravar o e-mail do Portal de %s", mascarar(phone))
+        return MSGS["ERRO_TECNICO"]
+    try:
+        delete_session(phone)
+    except Exception:
+        log.exception("E-mail do Portal salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
+    return MSGS["EMAIL_PORTAL_OK"].format(email=email)
 
 
 def _sessao_expirada(session: dict) -> bool:
@@ -360,7 +431,8 @@ class ConversationManager:
                     dados.pop(p["campo"], None)
                     tentativas.pop(p["campo"], None)
                 if "cnpj" not in dados:
-                    dados.pop(receita.CAMPO_SITUACAO, None)
+                    for extra in receita.LABELS:
+                        dados.pop(extra, None)
                 _marcar_auto(dados, [c for c in auto if c in dados])
 
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
@@ -447,17 +519,27 @@ class ConversationManager:
             if resp == "SIM":
                 try:
                     telefone = normalizar_whatsapp_br(phone)
-                    save_cadastro(telefone, _para_salvar(dados))
+                    cadastro_id = save_cadastro(telefone, _para_salvar(dados))
                 except Exception:
                     log.exception("Erro ao salvar cadastro de %s", mascarar(phone))
                     return MSGS["ERRO_SALVAR"]
                 # O cadastro já está salvo: uma falha daqui em diante não pode levar o
                 # fornecedor a confirmar de novo (o que duplicaria o registro).
+                # A sessão segue só para pedir o e-mail do Portal.
+                pos = {"_cadastro_id": str(cadastro_id)}
+                sugestao = portal.normalizar_email(dados.get("contato", ""))
+                if sugestao:
+                    pos["_sugestao_email"] = sugestao
                 try:
-                    delete_session(phone)
+                    update_session(phone, ESTADO_EMAIL_PORTAL, pos, {})
                 except Exception:
-                    log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
-                return MSGS["SUCESSO"]
+                    log.exception("Cadastro salvo, mas falhou ao pedir o e-mail do Portal de %s", mascarar(phone))
+                    try:
+                        delete_session(phone)
+                    except Exception:
+                        log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
+                    return f"{MSGS['SUCESSO']}\n\n{MSGS['LINK_PORTAL']}"
+                return _pedir_email_portal(pos)
             if resp == "NAO":
                 delete_session(phone)
                 create_session(phone)
@@ -468,6 +550,9 @@ class ConversationManager:
                 "Você também pode digitar ALTERAR + campo (ex: ALTERAR CNPJ).\n\n"
                 f"{_gerar_resumo(dados, perguntas)}"
             )
+
+        if state == ESTADO_EMAIL_PORTAL:
+            return _responder_email_portal(phone, text, dados, tentativas)
 
         # fallback — estado desconhecido
         delete_session(phone)

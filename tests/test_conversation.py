@@ -123,7 +123,8 @@ class TestFluxoFeliz:
         resp = manager.process(PHONE, "S")
         assert MSGS["SUCESSO"] in resp
         mock_session_module["save_cadastro"].assert_called_once_with(PHONE, dados)
-        mock_session_module["delete_session"].assert_called_once_with(PHONE)
+        # A sessão segue para pedir o e-mail do Portal.
+        assert mock_session_module["update_session"].call_args[0][1] == "EMAIL_PORTAL"
 
     def test_A_confirmacao_sim_variantes(self, manager, mock_session_module):
         dados = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Y", "estados": "MG"}
@@ -435,3 +436,89 @@ class TestMenus:
         resp = manager.process(PHONE, "ALTERAR Serviços")
         assert mock_session_module["update_session"].call_args[0][1] == "ALTERA_servico"
         assert "1. Acompanhamento Topográfico" in resp
+
+
+# ─────────────────────────────────────────────────────────────
+#  E-mail do Portal do Fornecedor (depois da confirmação)
+# ─────────────────────────────────────────────────────────────
+
+class TestEmailPortal:
+    DADOS = {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "(31) 99999-0000", "servico": "Y", "estados": "MG"}
+
+    @pytest.fixture
+    def mocks(self, mock_session_module, monkeypatch):
+        mock_session_module["save_cadastro"].return_value = "id-1"
+        completar = MagicMock()
+        monkeypatch.setattr("conversation.completar_cadastro", completar)
+        mock_session_module["completar_cadastro"] = completar
+        return mock_session_module
+
+    def _em_email(self, mocks, sugestao=None, tentativas=None):
+        dados = {"_cadastro_id": "id-1"}
+        if sugestao:
+            dados["_sugestao_email"] = sugestao
+        mocks["get_session"].return_value = _make_session("EMAIL_PORTAL", dados, tentativas)
+
+    def test_A_confirmar_pede_email_com_botao_agora_nao(self, manager, mocks):
+        mocks["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        resp = manager.process(PHONE, "S")
+        assert MSGS["SUCESSO"] in resp and "Qual e-mail" in resp
+        assert resp.botoes == [("PULAR", "Agora não")]
+        mocks["update_session"].assert_called_once_with(PHONE, "EMAIL_PORTAL", {"_cadastro_id": "id-1"}, {})
+        mocks["delete_session"].assert_not_called()
+
+    def test_A_contato_email_vira_sugestao_de_um_toque(self, manager, mocks):
+        dados = dict(self.DADOS, contato="compras@empresa.com.br")
+        mocks["get_session"].return_value = _make_session("CONFIRMACAO", dados)
+        resp = manager.process(PHONE, "S")
+        assert "compras@empresa.com.br" in resp
+        assert resp.botoes[0] == ("USAR", "Usar este e-mail")
+        assert all(len(t) <= 20 for _, t in resp.botoes)
+
+    @pytest.mark.parametrize("texto", ["USAR", "sim", "Usar este e-mail"])
+    def test_A_usar_sugestao(self, manager, mocks, texto):
+        self._em_email(mocks, sugestao="compras@empresa.com.br")
+        resp = manager.process(PHONE, texto)
+        mocks["completar_cadastro"].assert_called_once_with("id-1", {"email_portal": "compras@empresa.com.br"})
+        assert "compras@empresa.com.br" in resp
+        mocks["delete_session"].assert_called_once_with(PHONE)
+
+    def test_A_email_digitado_vale_mais_que_a_sugestao(self, manager, mocks):
+        self._em_email(mocks, sugestao="contato@empresa.com.br")
+        manager.process(PHONE, "É o Cotacoes@Empresa.com.br")
+        mocks["completar_cadastro"].assert_called_once_with("id-1", {"email_portal": "cotacoes@empresa.com.br"})
+
+    @pytest.mark.parametrize("texto", ["PULAR", "Agora não", "não", "depois"])
+    def test_A_pular_manda_link_do_portal(self, manager, mocks, texto):
+        self._em_email(mocks)
+        resp = manager.process(PHONE, texto)
+        assert "fornecedor.direcional.com.br" in resp
+        mocks["completar_cadastro"].assert_not_called()
+        mocks["delete_session"].assert_called_once_with(PHONE)
+
+    def test_B_texto_sem_email_pede_de_novo(self, manager, mocks):
+        self._em_email(mocks)
+        resp = manager.process(PHONE, "obrigado")
+        assert resp == MSGS["EMAIL_PORTAL_INVALIDO"]
+        mocks["completar_cadastro"].assert_not_called()
+        assert mocks["update_session"].call_args[0][3] == {"EMAIL_PORTAL": 1}
+
+    def test_B_tentativas_esgotadas_encerra_com_link(self, manager, mocks):
+        self._em_email(mocks, tentativas={"EMAIL_PORTAL": MAX_TENTATIVAS - 1})
+        resp = manager.process(PHONE, "???")
+        assert "fornecedor.direcional.com.br" in resp
+        mocks["delete_session"].assert_called_once_with(PHONE)
+
+    def test_B_falha_ao_abrir_etapa_ainda_confirma_com_link(self, manager, mocks):
+        mocks["update_session"].side_effect = IOError("timeout")
+        mocks["get_session"].return_value = _make_session("CONFIRMACAO", self.DADOS)
+        resp = manager.process(PHONE, "S")
+        assert MSGS["SUCESSO"] in resp and "fornecedor.direcional.com.br" in resp
+        mocks["save_cadastro"].assert_called_once()
+
+    def test_B_falha_ao_gravar_email_mantem_sessao(self, manager, mocks):
+        self._em_email(mocks)
+        mocks["completar_cadastro"].side_effect = IOError("timeout")
+        resp = manager.process(PHONE, "a@b.com")
+        assert resp == MSGS["ERRO_TECNICO"]
+        mocks["delete_session"].assert_not_called()

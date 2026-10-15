@@ -3,10 +3,11 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
-from receita import CAMPO_SITUACAO, LABEL_SITUACAO
+import portal
+import receita
 
 # Campos gravados pelo bot que não são perguntas.
-_LABELS_EXTRAS = {CAMPO_SITUACAO: LABEL_SITUACAO}
+_LABELS_EXTRAS = {**receita.LABELS, portal.CAMPO_EMAIL: portal.LABEL_EMAIL}
 
 # Brasília não tem horário de verão desde 2019 — offset fixo evita depender do tzdata no Windows.
 _FUSO_BRASILIA = timezone(timedelta(hours=-3))
