@@ -826,6 +826,205 @@ class MensagensTab(ctk.CTkFrame):
             messagebox.showerror("Erro", str(ex))
 
 
+# ── Tab: Portal do Fornecedor ─────────────────────────────────
+class PortalTab(ctk.CTkFrame):
+    """Cadastros enviados (ou a enviar) ao Portal do Fornecedor. Os que ficaram em "revisar"
+    ou "erro" podem ter as categorias ajustadas e ser enviados — ou descartados — daqui."""
+
+    _STATUS = {"revisar": "Revisar", "erro": "Erro", "enviado": "Enviado",
+               "ja_cadastrado": "Já no Portal", "descartado": "Descartado"}
+
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=C_BG)
+        treeview_style()
+        self._rows: dict[str, dict] = {}
+        self._categorias = self._carregar_categorias()
+        self._build()
+
+    @staticmethod
+    def _carregar_categorias() -> dict[str, str]:
+        try:
+            with open(BASE_DIR / "data" / "portal_categorias.json", encoding="utf-8") as f:
+                return {c["cod"]: c["nome"] for c in json.load(f)}
+        except Exception:
+            return {}
+
+    def _build(self):
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=28, pady=(24, 12))
+        page_header(header, "Portal do Fornecedor",
+                    "Cadastros enviados ao SISFOR e os que aguardam sua revisão.").pack(anchor="w")
+
+        ctrl = ctk.CTkFrame(self, fg_color="transparent")
+        ctrl.pack(fill="x", padx=28, pady=(0, 10))
+        secondary_button(ctrl, "⟳  Atualizar", self._load, width=110).pack(side="right", padx=(6, 0))
+        secondary_button(ctrl, "Processar agora", self._processar, width=140).pack(side="right")
+        self.lbl_status = ctk.CTkLabel(ctrl, text="", font=F_SMALL, text_color=C_MUTED)
+        self.lbl_status.pack(side="left")
+
+        tree_frame = card_frame(self)
+        tree_frame.pack(fill="both", expand=True, padx=28, pady=(0, 10))
+        cols = ("empresa", "cnpj", "status", "detalhe", "data")
+        self.tree = ttk.Treeview(tree_frame, show="headings", columns=cols,
+                                 style="App.Treeview", selectmode="browse")
+        for c, t, w in (("empresa", "Empresa", 220), ("cnpj", "CNPJ", 140), ("status", "Situação", 100),
+                        ("detalhe", "Motivo / resposta do Portal", 380), ("data", "Cadastro", 120)):
+            self.tree.heading(c, text=t)
+            self.tree.column(c, width=w)
+        style_tree_stripes(self.tree)
+        sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        self.tree.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        sb.pack(side="right", fill="y", pady=8)
+        self.tree.bind("<<TreeviewSelect>>", lambda _e: self._selecionar())
+
+        det = card_frame(self)
+        det.pack(fill="x", padx=28, pady=(0, 24))
+        inner = ctk.CTkFrame(det, fg_color="transparent")
+        inner.pack(fill="x", padx=16, pady=12)
+        field_label(inner, "Categorias do Portal (códigos separados por espaço, até 5):").pack(anchor="w")
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(4, 4))
+        self.ent_cat = ctk.CTkEntry(row, height=34, font=F_BODY)
+        self.ent_cat.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.ent_cat.bind("<KeyRelease>", lambda _e: self._mostrar_nomes())
+        self.btn_enviar = primary_button(row, "Enviar ao Portal", self._enviar, width=150)
+        self.btn_enviar.pack(side="left", padx=(0, 6))
+        self.btn_descartar = danger_button(row, "Descartar", self._descartar, width=110)
+        self.btn_descartar.pack(side="left")
+        self.lbl_nomes = ctk.CTkLabel(inner, text="Selecione um cadastro em Revisar ou Erro.",
+                                      font=F_SMALL, text_color=C_MUTED, justify="left", anchor="w")
+        self.lbl_nomes.pack(anchor="w", fill="x")
+        self._habilitar(False)
+        self._load()
+
+    def _habilitar(self, sim: bool):
+        estado = "normal" if sim else "disabled"
+        for w in (self.ent_cat, self.btn_enviar, self.btn_descartar):
+            w.configure(state=estado)
+
+    def _load(self):
+        db = db_from_env()
+        if not db:
+            self.lbl_status.configure(text="Banco de dados não configurado.", text_color=C_DANGER)
+            return
+        try:
+            rows = db.get_cadastros_portal()
+        except Exception as ex:
+            self.lbl_status.configure(text=f"Erro: {ex}", text_color=C_DANGER)
+            return
+        self.tree.delete(*self.tree.get_children())
+        self._rows = {r["id"]: r for r in rows}
+        for i, r in enumerate(rows):
+            d = r.get("dados") or {}
+            insert_striped(self.tree, i, (
+                d.get("razao_social", ""), d.get("cnpj", ""),
+                self._STATUS.get(r.get("portal_status"), r.get("portal_status")),
+                r.get("portal_detalhe") or "",
+                (r.get("criado_em") or "")[:16].replace("T", " "),
+            ), iid=r["id"])
+        pend = sum(r.get("portal_status") in ("revisar", "erro") for r in rows)
+        self.lbl_status.configure(text=f"{len(rows)} cadastro(s); {pend} aguardando revisão.",
+                                  text_color=C_DANGER if pend else C_MUTED)
+        self._selecionar()
+
+    def _selecionado(self) -> dict | None:
+        sel = self.tree.selection()
+        return self._rows.get(sel[0]) if sel else None
+
+    def _selecionar(self):
+        r = self._selecionado()
+        self.ent_cat.configure(state="normal")
+        self.ent_cat.delete(0, "end")
+        if not r or r.get("portal_status") not in ("revisar", "erro"):
+            self._habilitar(False)
+            self.lbl_nomes.configure(text="Selecione um cadastro em Revisar ou Erro.")
+            return
+        envio = r.get("portal_envio") or {}
+        self.ent_cat.insert(0, " ".join(envio.get("CodigosCategoria") or []))
+        self._habilitar(True)
+        self._mostrar_nomes()
+
+    def _codigos(self) -> list[str]:
+        import re
+        return list(dict.fromkeys(re.findall(r"\d+", self.ent_cat.get())))
+
+    def _mostrar_nomes(self):
+        r = self._selecionado()
+        servicos = ((r or {}).get("dados") or {}).get("servico", "")
+        nomes = [f"{c} — {self._categorias.get(c, '(código desconhecido)')}" for c in self._codigos()]
+        self.lbl_nomes.configure(text=f"Serviços no bot: {servicos}\n" + "\n".join(nomes))
+
+    def _enviar(self):
+        import portal
+        r = self._selecionado()
+        if not r:
+            return
+        campos = dict(r.get("portal_envio") or {})
+        if not campos:
+            # Revisão anterior a guardar o envio: monta de novo a partir do cadastro.
+            campos, _ = portal.montar_envio(r["phone"], r.get("dados") or {}, r.get("criado_em", ""),
+                                            portal.carregar_mapa())
+        campos["CodigosCategoria"] = self._codigos()
+        desconhecidos = [c for c in campos["CodigosCategoria"] if c not in self._categorias]
+        problemas = portal.problemas_para_envio(campos)
+        if desconhecidos:
+            problemas.append(f"Código(s) que o Portal não tem: {', '.join(desconhecidos)}")
+        if problemas:
+            messagebox.showerror("Não dá para enviar", "\n".join(problemas))
+            return
+        if not messagebox.askyesno(
+            "Enviar ao Portal do Fornecedor",
+            f"Cadastrar no Portal (não dá para desfazer daqui):\n\n"
+            f"{campos['Nome']}\n{campos['Identificador']}\n{campos['Email']} · {campos['Telefone']}\n"
+            f"{campos['Cidade']}/{campos['Estado']}\n\n"
+            + "\n".join(self._categorias[c] for c in campos["CodigosCategoria"])):
+            return
+        self.lbl_status.configure(text="Enviando...", text_color=C_MUTED)
+        self._habilitar(False)
+
+        def tarefa():
+            try:
+                status, detalhe = portal.enviar_um(db_from_env(), r, campos, portal.PortalCliente())
+                msg, cor = f"{self._STATUS.get(status, status)}: {detalhe}", (
+                    C_SUCCESS if status in ("enviado", "ja_cadastrado") else C_DANGER)
+            except Exception as ex:
+                msg, cor = f"Portal inacessível, nada foi gravado: {ex}", C_DANGER
+            self.after(0, lambda: (self._load(), self.lbl_status.configure(text=msg, text_color=cor)))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _descartar(self):
+        r = self._selecionado()
+        if not r or not messagebox.askyesno(
+                "Descartar", "Não enviar este cadastro ao Portal? (continua salvo no DirecioZAP)"):
+            return
+        try:
+            db_from_env().marcar_portal(r["id"], "descartado", "Descartado no Manager", r.get("portal_envio"))
+        except Exception as ex:
+            messagebox.showerror("Erro", str(ex))
+        self._load()
+
+    def _processar(self):
+        modo = env.get("PORTAL_ENVIO")
+        if modo not in ("auto", "revisar"):
+            messagebox.showinfo("Portal", "Envio ao Portal desligado: defina PORTAL_ENVIO=auto "
+                                          "(ou revisar) no .env.")
+            return
+        self.lbl_status.configure(text="Processando...", text_color=C_MUTED)
+
+        def tarefa():
+            import portal
+            try:
+                res = portal.processar_pendentes(db_from_env(), modo)
+                msg, cor = f"{len(res)} cadastro(s) processado(s).", C_MUTED
+            except Exception as ex:
+                msg, cor = f"Erro: {ex}", C_DANGER
+            self.after(0, lambda: (self._load(), self.lbl_status.configure(text=msg, text_color=cor)))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+
 # ── Tab: Configurações ────────────────────────────────────────
 class ConfiguracoesTab(ctk.CTkScrollableFrame):
     def __init__(self, parent):
@@ -1322,6 +1521,7 @@ class DirecioZAPApp(ctk.CTk):
         nav_items = [
             ("perguntas", "Perguntas"),
             ("mensagens", "Mensagens"),
+            ("portal", "Portal"),
             ("configuracoes", "Configurações"),
             ("diagnostico", "Diagnóstico"),
             ("tutorial", "Tutorial"),
@@ -1376,6 +1576,7 @@ class DirecioZAPApp(ctk.CTk):
         self._tabs = {
             "perguntas":      PerguntasTab(self.content),
             "mensagens":      MensagensTab(self.content),
+            "portal":         PortalTab(self.content),
             "configuracoes":  ConfiguracoesTab(self.content),
             "diagnostico":    DiagnosticoTab(self.content),
             "tutorial":       TutorialTab(self.content),

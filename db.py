@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_atualizado_em_idx ON sessions (atualizado_em);
 
+-- Portal do Fornecedor (portal.py): status do envio, motivo/resposta e o que foi enviado.
+-- portal_status NULL = ainda não processado.
+ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS portal_status TEXT;
+ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS portal_em TIMESTAMPTZ;
+ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS portal_detalhe TEXT;
+ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS portal_envio JSONB;
+
 -- Ajustes de dados que devem rodar uma vez só (ver init_schema).
 CREATE TABLE IF NOT EXISTS migracoes (
   nome        TEXT PRIMARY KEY,
@@ -278,6 +285,31 @@ class Database:
 
     def marcar_notificado(self, id_: str) -> None:
         self._query("UPDATE cadastros SET notificado_em = NOW() WHERE id = %s", (id_,), fetch=False)
+
+    # ── Portal do Fornecedor ──────────────────────────────────
+
+    def get_cadastros_portal_pendentes(self) -> list[dict]:
+        """Cadastros com e-mail do Portal ainda não processados (o e-mail é pedido depois da
+        confirmação: sem ele, o fornecedor ainda pode estar respondendo ou pulou)."""
+        return self._query(
+            "SELECT * FROM cadastros WHERE portal_status IS NULL AND dados ? 'email_portal' "
+            "ORDER BY criado_em"
+        )
+
+    def get_cadastros_portal(self, limit: int = 100) -> list[dict]:
+        return self._query(
+            "SELECT * FROM cadastros WHERE portal_status IS NOT NULL "
+            "ORDER BY (portal_status IN ('revisar', 'erro')) DESC, criado_em DESC LIMIT %s",
+            (limit,),
+        )
+
+    def marcar_portal(self, id_: str, status: str, detalhe: str | None, envio: dict | None) -> None:
+        self._query(
+            "UPDATE cadastros SET portal_status = %s, portal_em = NOW(), portal_detalhe = %s, "
+            "portal_envio = %s WHERE id = %s",
+            (status, detalhe, Jsonb(envio) if envio is not None else None, id_),
+            fetch=False,
+        )
 
     def get_cadastros(self, limit: int | None = None, recentes_primeiro: bool = False) -> list[dict]:
         ordem = "DESC" if recentes_primeiro else "ASC"

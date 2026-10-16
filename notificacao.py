@@ -90,3 +90,36 @@ def enviar_pendentes(db, para: list[str], enviar=None) -> tuple[int, int]:
         enviados += 1
         log.info("Aviso do cadastro de %s enviado para %s.", mascarar(c["phone"]), ", ".join(para))
     return enviados, 0
+
+
+_TITULO_PORTAL = {
+    portal.ENVIADO: "Enviado ao Portal",
+    portal.JA_CADASTRADO: "Já estava no Portal",
+    portal.REVISAR: "Aguardando sua revisão (Manager → Portal)",
+    portal.ERRO: "Erro no envio — conferir no Portal (Manager → Portal)",
+}
+
+
+def montar_email_portal(resultados: list[dict]) -> tuple[str, str]:
+    """(assunto, corpo HTML) do resumo de um ciclo de envios ao Portal do Fornecedor."""
+    contagem = {}
+    for r in resultados:
+        contagem[r["status"]] = contagem.get(r["status"], 0) + 1
+    partes = [f"{n} {_TITULO_PORTAL.get(s, s).split(' (')[0].lower()}" for s, n in contagem.items()]
+    assunto = "DirecioZAP: Portal do Fornecedor — " + ", ".join(partes)
+    linhas = "".join(
+        "<tr>"
+        f"<td style='padding:4px 12px 4px 0'>{html.escape(str((r['cadastro'].get('dados') or {}).get('razao_social', '')))}</td>"
+        f"<td style='padding:4px 12px 4px 0'>{html.escape(str((r['cadastro'].get('dados') or {}).get('cnpj', '')))}</td>"
+        f"<td style='padding:4px 12px 4px 0'><b>{html.escape(_TITULO_PORTAL.get(r['status'], r['status']))}</b></td>"
+        f"<td style='padding:4px 0;color:#555'>{html.escape(str(r.get('detalhe') or ''))}</td>"
+        "</tr>"
+        for r in resultados
+    )
+    corpo = (
+        "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
+        "<p>Resultado do cadastro no Portal do Fornecedor:</p>"
+        "<table><tr style='color:#888'><td>Empresa</td><td>CNPJ</td><td>Situação</td><td>Detalhe</td></tr>"
+        f"{linhas}</table></div>"
+    )
+    return assunto, corpo

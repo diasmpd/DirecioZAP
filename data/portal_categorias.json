@@ -1,0 +1,970 @@
+[
+{
+"cod": "1",
+"nome": "Acessórios de Fixação ( Parafuso, Bucha, Arruela, Chumbador )"
+},
+{
+"cod": "174",
+"nome": "Acessórios para Fôrmas de Alumínio para Sistema Parede de Concreto"
+},
+{
+"cod": "2",
+"nome": "Aço ( Arame, Barra, Chapa, Perfil, Prego, Tela Soldada, Vergalhão, etc... )"
+},
+{
+"cod": "186",
+"nome": "Aferição / Calibração de Instrumentos de Medição"
+},
+{
+"cod": "98",
+"nome": "Agente de Portaria / Vigia / Vigilância ( Patrimonial, Canina )"
+},
+{
+"cod": "3",
+"nome": "Agregados ( Brita, Areia, Seixo, Pedra )"
+},
+{
+"cod": "123",
+"nome": "Água Mineral / Saco de Gelo"
+},
+{
+"cod": "103",
+"nome": "Água para Abastecimento de Obra ( Caminhão PIPA )"
+},
+{
+"cod": "104",
+"nome": "Aluguel de Galpão para Armazenamento de Materiais"
+},
+{
+"cod": "192",
+"nome": "Análise / Laudos / Ensaios Microbiológicos, Químicas e Geoquímicas"
+},
+{
+"cod": "117",
+"nome": "Aquecedores, Exaustores, Pressurizadores, Kit Chaminé ( Chapéu, Duto/Tubo, Arremate, Grades Ventilação )"
+},
+{
+"cod": "4",
+"nome": "Ar Condicionado (Aparelho) Split, Janela, Piso Teto"
+},
+{
+"cod": "5",
+"nome": "Argamassas e Rejuntes"
+},
+{
+"cod": "63",
+"nome": "Assentamento Cerâmico"
+},
+{
+"cod": "6",
+"nome": "Aterramento ( SPDA )"
+},
+{
+"cod": "7",
+"nome": "Bancadas, Tanques e Divisórias"
+},
+{
+"cod": "121",
+"nome": "Bebedouro Industrial e Acessórios ( Filtro e Refil )"
+},
+{
+"cod": "8",
+"nome": "Bloco de Concreto"
+},
+{
+"cod": "113",
+"nome": "Bombas ( Recalque, Submersível, Incêndio, Centrífuga, Pressurizadora )"
+},
+{
+"cod": "245",
+"nome": "Brindes Personalizados, Corporativos e Promocionais"
+},
+{
+"cod": "240",
+"nome": "Cal Hidratada"
+},
+{
+"cod": "9",
+"nome": "Camisas em Polietileno ( Camisinha p/ Faqueta )"
+},
+{
+"cod": "10",
+"nome": "Cerâmicas, Porcelanatos, Pastilhas"
+},
+{
+"cod": "118",
+"nome": "Cesta Básica"
+},
+{
+"cod": "176",
+"nome": "Chaveiro"
+},
+{
+"cod": "243",
+"nome": "Churrasqueira, Forno, Fogão a Lenha, Lareira e Acessórios"
+},
+{
+"cod": "11",
+"nome": "Cimento"
+},
+{
+"cod": "12",
+"nome": "Cobertura ( Telhas, Rufos, Calhas, Cumeeira )"
+},
+{
+"cod": "242",
+"nome": "Combustível ( Diesel, Gasolina, Álcool, etc... )"
+},
+{
+"cod": "199",
+"nome": "Compensação Ambiental"
+},
+{
+"cod": "177",
+"nome": "Compra - Aparalixo ( Bandeja ), Andaime, Escoramento, Travamento, Balancim"
+},
+{
+"cod": "64",
+"nome": "Comunicação Visual"
+},
+{
+"cod": "244",
+"nome": "Condutor/Duto para Entulho"
+},
+{
+"cod": "132",
+"nome": "Conexões em Inox"
+},
+{
+"cod": "187",
+"nome": "Construção / Execução de Stands de Vendas"
+},
+{
+"cod": "128",
+"nome": "Consultoria Ambiental"
+},
+{
+"cod": "157",
+"nome": "Consultoria de Esquadrias"
+},
+{
+"cod": "158",
+"nome": "Consultoria de Fachadas"
+},
+{
+"cod": "201",
+"nome": "Consultoria de Fundação"
+},
+{
+"cod": "202",
+"nome": "Consultoria de Reservatório"
+},
+{
+"cod": "203",
+"nome": "Consultoria de Terraplenagem"
+},
+{
+"cod": "193",
+"nome": "Controle de Ponto / Acesso ( Relógio de Ponto, Catraca, Cancelas )"
+},
+{
+"cod": "15",
+"nome": "Decoração"
+},
+{
+"cod": "101",
+"nome": "Descupinização / Dedetização / Desratização / Desinsetização"
+},
+{
+"cod": "16",
+"nome": "Desmoldantes"
+},
+{
+"cod": "17",
+"nome": "Distanciadores / Espaçadores"
+},
+{
+"cod": "18",
+"nome": "Elevadores Definitivos"
+},
+{
+"cod": "120",
+"nome": "Embalagens e Descartáveis"
+},
+{
+"cod": "66",
+"nome": "Engradamento Metálico"
+},
+{
+"cod": "67",
+"nome": "Ensaios de Fundação ( PIT, PDA, PCE )"
+},
+{
+"cod": "184",
+"nome": "Ensaios em Agregados ( Massa, Resistência, Composição Granulométrica, Impurezas, etc... )"
+},
+{
+"cod": "181",
+"nome": "Ensaios em Asfalto / Pavimentação ( Umidade, Granulométrica, Viga Benkelman, Teor de Betume, Densidade, Imprimação, Pintura de Ligação, Marshall, Viscosidade, etc... )"
+},
+{
+"cod": "182",
+"nome": "Ensaios em Cerâmica ( Aderência, Tração, Arrancamento, Manchamento, Abrasão, etc... )"
+},
+{
+"cod": "65",
+"nome": "Ensaios em Concreto ( Slump, Moldagem, Resistência, Propriedades, Materiais Constituintes, etc... )"
+},
+{
+"cod": "185",
+"nome": "Ensaios em Guarda Corpo ( Esforço Estático Horizontal, Vertical e Impacto, etc... )"
+},
+{
+"cod": "183",
+"nome": "Ensaios em Solos ( CBR, Permeabilidade, Plasticidade, Compressão, Caracterização, etc... )"
+},
+{
+"cod": "19",
+"nome": "Equipamento de Proteção Individual ( EPI )"
+},
+{
+"cod": "20",
+"nome": "Equipamentos de Ginástica / Brinquedos"
+},
+{
+"cod": "22",
+"nome": "Equipamentos Informática ( Acessórios e Periféricos )"
+},
+{
+"cod": "122",
+"nome": "Escaninho para Correspondência ( Caixa de Correio )"
+},
+{
+"cod": "68",
+"nome": "Escoramentos ( Metálicos, Madeira e afins )"
+},
+{
+"cod": "119",
+"nome": "Esgotamento de Fossa"
+},
+{
+"cod": "23",
+"nome": "Esquadrias de Alumínio"
+},
+{
+"cod": "24",
+"nome": "Esquadrias de Ferro"
+},
+{
+"cod": "25",
+"nome": "Esquadrias de Madeira"
+},
+{
+"cod": "131",
+"nome": "Esquadrias de PVC"
+},
+{
+"cod": "69",
+"nome": "Esquadrias de Vidro"
+},
+{
+"cod": "210",
+"nome": "Estrutura Metálica"
+},
+{
+"cod": "70",
+"nome": "ETA ( Estação de Tratamento de Água )"
+},
+{
+"cod": "71",
+"nome": "ETE ( Estação de Tratamento de Esgoto )"
+},
+{
+"cod": "72",
+"nome": "Exames Médicos / Avaliações / Laudos ( Medicina e Segurança do Trabalho )"
+},
+{
+"cod": "211",
+"nome": "Execução de Alambrados e Cercas"
+},
+{
+"cod": "212",
+"nome": "Execução de Alvenaria de Bloco de Concreto / Muro de Divisa"
+},
+{
+"cod": "213",
+"nome": "Execução de Chapisco / Reboco / Estuque (Interno / Externo)"
+},
+{
+"cod": "214",
+"nome": "Execução de Cobertura / Engradamento Metálico"
+},
+{
+"cod": "215",
+"nome": "Execução de Contenção"
+},
+{
+"cod": "96",
+"nome": "Execução de Entrada de Energia Provisória / Definitiva (Subestação)"
+},
+{
+"cod": "73",
+"nome": "Execução de Forma e Armação"
+},
+{
+"cod": "216",
+"nome": "Execução de Fundação Profunda Mecanizada"
+},
+{
+"cod": "77",
+"nome": "Execução de Fundação Superficial - Escavação / Forma / Armação"
+},
+{
+"cod": "217",
+"nome": "Execução de Gesso Liso"
+},
+{
+"cod": "241",
+"nome": "Execução de Limpeza Final de Obra"
+},
+{
+"cod": "218",
+"nome": "Execução de Meio-Fio / Calçadas"
+},
+{
+"cod": "219",
+"nome": "Execução de Obras Civil"
+},
+{
+"cod": "220",
+"nome": "Execução de Parede de Drywall / Forro de Gesso / Bloco de Gesso"
+},
+{
+"cod": "221",
+"nome": "Execução de Pavimentação Asfáltica"
+},
+{
+"cod": "222",
+"nome": "Execução de Pergolado / Deck de Madeira"
+},
+{
+"cod": "75",
+"nome": "Execução de Pintura e Limpeza ( Interna, Externa )"
+},
+{
+"cod": "223",
+"nome": "Execução de Piscina"
+},
+{
+"cod": "224",
+"nome": "Execução de Piso Elevado"
+},
+{
+"cod": "225",
+"nome": "Execução de Piso Intertravado"
+},
+{
+"cod": "90",
+"nome": "Execução de Poço Artesiano"
+},
+{
+"cod": "76",
+"nome": "Execução de Quadras Poliesportivas"
+},
+{
+"cod": "127",
+"nome": "Execução de Rede Elétrica / Iluminação Pública / Subestação Definitiva"
+},
+{
+"cod": "74",
+"nome": "Execução e Fechamento de Tapume"
+},
+{
+"cod": "172",
+"nome": "Fabricação de Fôrmas de Alumínio para Sistema Parede de Concreto"
+},
+{
+"cod": "26",
+"nome": "Ferragens"
+},
+{
+"cod": "21",
+"nome": "Ferramentas e Equipamentos"
+},
+{
+"cod": "110",
+"nome": "Ferro Fundido, Galvanizado e Aço Carbono ( Válvula, Tubo, Conexão, Tampão, Grelha, Toco )"
+},
+{
+"cod": "204",
+"nome": "Fornecimento / Instalação de Brise de Alumínio"
+},
+{
+"cod": "205",
+"nome": "Fornecimento / Instalação de Esquadrias de Alumínio"
+},
+{
+"cod": "206",
+"nome": "Fornecimento / Instalação de Esquadrias Especiais"
+},
+{
+"cod": "207",
+"nome": "Fornecimento / Instalação de Guarda Corpo de Vidro"
+},
+{
+"cod": "208",
+"nome": "Fornecimento / Instalação de Pele de Vidro em Fachada"
+},
+{
+"cod": "209",
+"nome": "Fornecimento / Instalação de Portas de Madeira"
+},
+{
+"cod": "13",
+"nome": "Fornecimento de Concreto Usinado"
+},
+{
+"cod": "91",
+"nome": "Fornecimento de Refeição ( Café da Manhã, Almoço, Lanche da tarde, Jantar )"
+},
+{
+"cod": "44",
+"nome": "Fornecimento e Execução de Paisagismo e Jardinagem ( Grama, Plantas, Mudas, etc... )"
+},
+{
+"cod": "88",
+"nome": "Fornecimento e Instalação de Piso Laminado / Vinílico"
+},
+{
+"cod": "27",
+"nome": "Forros"
+},
+{
+"cod": "28",
+"nome": "Fretes e Carretos - Transporte de Terceiros"
+},
+{
+"cod": "226",
+"nome": "GÁS - GLP (Comodato)"
+},
+{
+"cod": "129",
+"nome": "Gases industriais"
+},
+{
+"cod": "227",
+"nome": "Gestão de Resíduos"
+},
+{
+"cod": "89",
+"nome": "Gráfica ( Plotagens, Fotocópias )"
+},
+{
+"cod": "130",
+"nome": "Grupo Gerador de Energia"
+},
+{
+"cod": "114",
+"nome": "Hidrômetros, Kit Instalação e Cavalete"
+},
+{
+"cod": "135",
+"nome": "Higienização de Uniformes e EPI"
+},
+{
+"cod": "124",
+"nome": "Imagens e Vídeos 3D"
+},
+{
+"cod": "29",
+"nome": "Impermeabilizante, Aditivo, Manta, Silicone, Espuma Poliuretano, Selante, Graute"
+},
+{
+"cod": "30",
+"nome": "Impressões / Fotocópias"
+},
+{
+"cod": "78",
+"nome": "Infraestrutura ( Rede de Drenagem, Água e Esgoto e etc )"
+},
+{
+"cod": "228",
+"nome": "Instalação Hidráulica e Elétrica de Reservatório"
+},
+{
+"cod": "80",
+"nome": "Instalações de Interfonia, Telefonia, CFTV e Alarme"
+},
+{
+"cod": "82",
+"nome": "Instalações de Rede de Gás"
+},
+{
+"cod": "81",
+"nome": "Instalações de Rede de Incêndio / SDAI / Alarme e Detecção"
+},
+{
+"cod": "79",
+"nome": "Instalações de Sistema de Pressurização e Exaustão Mecânica"
+},
+{
+"cod": "136",
+"nome": "Kit Portão Eletrônico, Câmera de Segurança, Alarme, Cerca Elétrica, Concertina, etc..."
+},
+{
+"cod": "62",
+"nome": "Lançamento, Adensamento , Acabamento e Nivelamento de Concreto"
+},
+{
+"cod": "188",
+"nome": "Laudo Vistoria Cautelar"
+},
+{
+"cod": "83",
+"nome": "Laudos ( Resistência Ôhmica, Aterramento, Para-Raios )"
+},
+{
+"cod": "133",
+"nome": "Levantamento / Inventário Arbóreo"
+},
+{
+"cod": "97",
+"nome": "Levantamento Topográfico, Topografia"
+},
+{
+"cod": "138",
+"nome": "Limpeza / Higienização de Caixa d'água / Reservatórios"
+},
+{
+"cod": "140",
+"nome": "Limpeza de Piscina"
+},
+{
+"cod": "84",
+"nome": "Limpeza de Terreno, Supressão, Replantio, Demolição, etc..."
+},
+{
+"cod": "229",
+"nome": "Locação de Andaime Fachadeiro / Andaime Tubular / Escoramento / Cimbramento"
+},
+{
+"cod": "238",
+"nome": "Locação de Balancim"
+},
+{
+"cod": "99",
+"nome": "Locação de Caçamba de Entulho e Lixo / Transporte de Resíduos"
+},
+{
+"cod": "239",
+"nome": "Locação de Caminhão Basculante"
+},
+{
+"cod": "237",
+"nome": "Locação de Caminhão Munck"
+},
+{
+"cod": "108",
+"nome": "Locação de Container / Banheiro Químico"
+},
+{
+"cod": "232",
+"nome": "Locação de Elevador Cremalheira / Grua / Mini-Grua"
+},
+{
+"cod": "31",
+"nome": "Locação de Equipamentos Leves ( Furadeira, Serra, Bomba, Martelete, Betoneira, Esmerilhadeira, Lixadeira, Parafusadeira, etc... )"
+},
+{
+"cod": "236",
+"nome": "Locação de Forma Deslizante"
+},
+{
+"cod": "234",
+"nome": "Locação de Gerador"
+},
+{
+"cod": "235",
+"nome": "Locação de Guindaste"
+},
+{
+"cod": "86",
+"nome": "Locação de Impressora"
+},
+{
+"cod": "233",
+"nome": "Locação de Manipulador Telescópico / Plataforma Elevatória"
+},
+{
+"cod": "85",
+"nome": "Locação de Retroescavadeira / Escavadeira / Trator / BobCat / Mini Carregadeira"
+},
+{
+"cod": "32",
+"nome": "Louças"
+},
+{
+"cod": "139",
+"nome": "Lubrificantes e Graxas"
+},
+{
+"cod": "194",
+"nome": "Luminárias, Postes para Iluminação, Lâmpadas, Arandelas, Projetor, Balizador e Acessórios"
+},
+{
+"cod": "33",
+"nome": "Madeira ( Chapa de Compensado, Tábua, Pontalete, Sarrafo, etc... )"
+},
+{
+"cod": "175",
+"nome": "Manutenção de Fôrmas de Alumínio para Sistema Parede de Concreto"
+},
+{
+"cod": "34",
+"nome": "Manutenção de Máquinas e Equipamentos"
+},
+{
+"cod": "134",
+"nome": "Maquetes"
+},
+{
+"cod": "125",
+"nome": "Marcenaria / Fechamento de Shaft em MDF"
+},
+{
+"cod": "178",
+"nome": "Marketing"
+},
+{
+"cod": "105",
+"nome": "Material de Construção em Geral"
+},
+{
+"cod": "35",
+"nome": "Material de Escritório"
+},
+{
+"cod": "36",
+"nome": "Material de Incêndio"
+},
+{
+"cod": "37",
+"nome": "Material de Limpeza / Utensílios Domésticos"
+},
+{
+"cod": "47",
+"nome": "Material de Pintura ( Tinta, Verniz, Massa Corrida, Textura, Selador, Solvente, etc... )"
+},
+{
+"cod": "38",
+"nome": "Material Elétrico"
+},
+{
+"cod": "39",
+"nome": "Material Hidráulico"
+},
+{
+"cod": "40",
+"nome": "Material Instalação de Gás"
+},
+{
+"cod": "41",
+"nome": "Medicamentos"
+},
+{
+"cod": "42",
+"nome": "Metais ( Torneiras, Barras de Apoio, Cubas, Registros, Acabamentos p/ Registros, Misturador, Duchas )"
+},
+{
+"cod": "230",
+"nome": "Montagem / Execução de Canteiro de Obra em Geral"
+},
+{
+"cod": "231",
+"nome": "Montagem de Forma de Alumínio da Parede de Concreto"
+},
+{
+"cod": "43",
+"nome": "Móveis e Eletro Domésticos"
+},
+{
+"cod": "45",
+"nome": "Pavimentação ( CAP - Cimento Asfáltico de Petróleo, CBUQ - Concreto Betuminoso Usinada à Quente, Emulsão Asfáltica RR, etc... )"
+},
+{
+"cod": "46",
+"nome": "Pedras Naturais ( Ardósia, Granito, Mármore, São Tomé, etc... )"
+},
+{
+"cod": "195",
+"nome": "Perfilados, Eletrocalhas, Leitos para Cabos e Acessórios"
+},
+{
+"cod": "109",
+"nome": "Pex"
+},
+{
+"cod": "48",
+"nome": "Piscina ( Fibra, Vinil e Equipamentos )"
+},
+{
+"cod": "141",
+"nome": "Piso Elevado"
+},
+{
+"cod": "196",
+"nome": "Piso Emborrachado ( Academia, Playground, etc... )"
+},
+{
+"cod": "87",
+"nome": "Piso Intertravado, Piso Podotátil Concreto"
+},
+{
+"cod": "143",
+"nome": "Piso Podotátil Emborrachado"
+},
+{
+"cod": "197",
+"nome": "Piso Vinílico"
+},
+{
+"cod": "115",
+"nome": "Placas / Chapas / Molduras em EPS, Poliestireno Expandido ( Isopor ), Isolamento Térmico e Acústico"
+},
+{
+"cod": "144",
+"nome": "Porta Corta Fogo"
+},
+{
+"cod": "49",
+"nome": "Pré Moldado"
+},
+{
+"cod": "170",
+"nome": "Projeto de Aproveitamento de Água Pluvial"
+},
+{
+"cod": "155",
+"nome": "Projeto de Ar Condicionado e Exaustão Mecânica"
+},
+{
+"cod": "156",
+"nome": "Projeto de Arquitetura Executiva e Detalhamento"
+},
+{
+"cod": "153",
+"nome": "Projeto de Combate e Prevenção a Incêndio e Pânico, Pressurização e Alarme e Detecção de Incêndio"
+},
+{
+"cod": "159",
+"nome": "Projeto de Contenção"
+},
+{
+"cod": "169",
+"nome": "Projeto de Drywall ou Blocos de gesso"
+},
+{
+"cod": "154",
+"nome": "Projeto de Entrada de Energia"
+},
+{
+"cod": "163",
+"nome": "Projeto de Estação de Tratamento de Esgoto"
+},
+{
+"cod": "161",
+"nome": "Projeto de Estrutura de Concreto, Alvenaria Estrutural e Estrutura Metálica"
+},
+{
+"cod": "162",
+"nome": "Projeto de Estrutura Metálica para castelo d/água"
+},
+{
+"cod": "160",
+"nome": "Projeto de Fundação"
+},
+{
+"cod": "152",
+"nome": "Projeto de Iluminação Pública"
+},
+{
+"cod": "149",
+"nome": "Projeto de Infraestrutura de Água e Esgoto"
+},
+{
+"cod": "148",
+"nome": "Projeto de Infraestrutura de Drenagem"
+},
+{
+"cod": "171",
+"nome": "Projeto de Infraestrutura de Esgoto do Canteiro de obras"
+},
+{
+"cod": "151",
+"nome": "Projeto de Infraestrutura de Telefonia"
+},
+{
+"cod": "150",
+"nome": "Projeto de Infraestrutura Elétrica"
+},
+{
+"cod": "164",
+"nome": "Projeto de Instalações Prediais ( ELE, HIS, TEL, SPDA, GAS )"
+},
+{
+"cod": "165",
+"nome": "Projeto de Modulação de Alvenaria"
+},
+{
+"cod": "166",
+"nome": "Projeto de Paisagismo"
+},
+{
+"cod": "147",
+"nome": "Projeto de Pavimentação"
+},
+{
+"cod": "167",
+"nome": "Projeto de Piscina"
+},
+{
+"cod": "168",
+"nome": "Projeto de Sinalização"
+},
+{
+"cod": "146",
+"nome": "Projeto de Terraplanagem e Geométrico"
+},
+{
+"cod": "126",
+"nome": "Publicidade e Propaganda"
+},
+{
+"cod": "111",
+"nome": "Quadros Elétricos, Miolos, QDC, CM, Painéis"
+},
+{
+"cod": "116",
+"nome": "Rádios Intercomunicadores"
+},
+{
+"cod": "189",
+"nome": "Recarga de Extintor de Incêndio"
+},
+{
+"cod": "137",
+"nome": "Remoção de Enxames ( Abelhas, Marimbondos, Vespas )"
+},
+{
+"cod": "180",
+"nome": "Reservatório de Polietileno / Fibra de Vidro"
+},
+{
+"cod": "92",
+"nome": "Reservatório Metálico ( Fornecimento, Içamento, Montagem, Instalação )"
+},
+{
+"cod": "51",
+"nome": "Revestimento"
+},
+{
+"cod": "93",
+"nome": "Revestimentos em Gesso ( Forro, Drywall, Gesso Liso, Gesso Acartonado )"
+},
+{
+"cod": "198",
+"nome": "Revestimentos em Poliestireno ( Acabamento, Lambri, Rodapé, etc... )"
+},
+{
+"cod": "52",
+"nome": "Serralheria"
+},
+{
+"cod": "191",
+"nome": "Serviço de Assentamento de Porta"
+},
+{
+"cod": "94",
+"nome": "Serviço de Impermeabilização"
+},
+{
+"cod": "190",
+"nome": "Serviço de Perfuração em Concreto ( Lajes, Vigas e Paredes )"
+},
+{
+"cod": "53",
+"nome": "Sinalização Horizontal e Vertical"
+},
+{
+"cod": "100",
+"nome": "Sistema de Ancoragem / Protensão ( Tirante Monobarra, Placa de Ancoragem, Olhal, Acessórios )"
+},
+{
+"cod": "112",
+"nome": "Sistema de Parede de Concreto"
+},
+{
+"cod": "173",
+"nome": "Sistema de Segurança para Fôrmas de Alumínio para Sistema Parede de Concreto"
+},
+{
+"cod": "179",
+"nome": "Softwares de Informática"
+},
+{
+"cod": "95",
+"nome": "Softwares de Monitoramento"
+},
+{
+"cod": "145",
+"nome": "Sondagem"
+},
+{
+"cod": "54",
+"nome": "Tampas de Shaft e Carenagens Hidráulicas"
+},
+{
+"cod": "107",
+"nome": "Tenda Piramidal / Lonas para Tendas"
+},
+{
+"cod": "102",
+"nome": "Terraplenagem / Bota Fora / Empréstimo / Corte e Aterro"
+},
+{
+"cod": "55",
+"nome": "Tijolo Cerâmico"
+},
+{
+"cod": "142",
+"nome": "Transformadores"
+},
+{
+"cod": "200",
+"nome": "Tratamento de Concreto Aparente"
+},
+{
+"cod": "56",
+"nome": "Treinamento / Cursos Técnicos"
+},
+{
+"cod": "57",
+"nome": "Uniformes"
+},
+{
+"cod": "58",
+"nome": "Utensílios em Geral"
+},
+{
+"cod": "59",
+"nome": "Veda Portas"
+},
+{
+"cod": "60",
+"nome": "Veículos"
+},
+{
+"cod": "61",
+"nome": "Vidros"
+}
+]
