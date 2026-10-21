@@ -100,26 +100,44 @@ _TITULO_PORTAL = {
 }
 
 
-def montar_email_portal(resultados: list[dict]) -> tuple[str, str]:
-    """(assunto, corpo HTML) do resumo de um ciclo de envios ao Portal do Fornecedor."""
+_TITULO_LISTA = {
+    "inserido": "Incluído na lista",
+    "ja_prospectado": "Já estava na lista como prospectado",
+    "revisar": "Aguardando sua revisão (Manager → Lista)",
+}
+
+
+def _montar_resumo(resultados: list[dict], titulos: dict, nome: str, intro: str) -> tuple[str, str]:
     contagem = {}
     for r in resultados:
         contagem[r["status"]] = contagem.get(r["status"], 0) + 1
-    partes = [f"{n} {_TITULO_PORTAL.get(s, s).split(' (')[0].lower()}" for s, n in contagem.items()]
-    assunto = "DirecioZAP: Portal do Fornecedor — " + ", ".join(partes)
+    partes = [f"{n} {titulos.get(s, s).split(' (')[0].lower()}" for s, n in contagem.items()]
+    assunto = f"DirecioZAP: {nome} — " + ", ".join(partes)
     linhas = "".join(
         "<tr>"
         f"<td style='padding:4px 12px 4px 0'>{html.escape(str((r['cadastro'].get('dados') or {}).get('razao_social', '')))}</td>"
         f"<td style='padding:4px 12px 4px 0'>{html.escape(str((r['cadastro'].get('dados') or {}).get('cnpj', '')))}</td>"
-        f"<td style='padding:4px 12px 4px 0'><b>{html.escape(_TITULO_PORTAL.get(r['status'], r['status']))}</b></td>"
+        f"<td style='padding:4px 12px 4px 0'><b>{html.escape(titulos.get(r['status'], r['status']))}</b></td>"
         f"<td style='padding:4px 0;color:#555'>{html.escape(str(r.get('detalhe') or ''))}</td>"
         "</tr>"
         for r in resultados
     )
     corpo = (
         "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
-        "<p>Resultado do cadastro no Portal do Fornecedor:</p>"
+        f"<p>{html.escape(intro)}</p>"
         "<table><tr style='color:#888'><td>Empresa</td><td>CNPJ</td><td>Situação</td><td>Detalhe</td></tr>"
         f"{linhas}</table></div>"
     )
     return assunto, corpo
+
+
+def montar_email_portal(resultados: list[dict]) -> tuple[str, str]:
+    """(assunto, corpo HTML) do resumo de um ciclo de envios ao Portal do Fornecedor."""
+    return _montar_resumo(resultados, _TITULO_PORTAL, "Portal do Fornecedor",
+                          "Resultado do cadastro no Portal do Fornecedor:")
+
+
+def montar_email_lista(resultados: list[dict]) -> tuple[str, str]:
+    """(assunto, corpo HTML) do resumo de um ciclo de inclusões no LISTA_FORNECEDORES."""
+    return _montar_resumo(resultados, _TITULO_LISTA, "LISTA_FORNECEDORES",
+                          "Resultado da inclusão no LISTA_FORNECEDORES.xlsm:")

@@ -168,7 +168,7 @@ class UvicornServer:
 # caso contrário o pydantic Settings ficaria com os valores da 1ª carga.
 _BOT_MODULES = (
     "main", "config", "conversation", "whatsapp",
-    "db", "excel_writer", "validators", "notificacao", "opcoes",
+    "db", "excel_writer", "validators", "notificacao", "opcoes", "lista_fornecedores",
 )
 
 _MSG_SEGUNDO_PLANO = (
@@ -1025,6 +1025,184 @@ class PortalTab(ctk.CTkFrame):
         threading.Thread(target=tarefa, daemon=True).start()
 
 
+# ── Tab: LISTA_FORNECEDORES ───────────────────────────────────
+class ListaTab(ctk.CTkFrame):
+    """Cadastros incluídos (ou a incluir) no LISTA_FORNECEDORES.xlsm. Os que ficaram em
+    "revisar" ou "erro" podem ter os códigos da Legenda ajustados e ser incluídos — ou
+    descartados — daqui."""
+
+    _STATUS = {"revisar": "Revisar", "erro": "Erro", "inserido": "Incluído",
+               "ja_prospectado": "Já na lista", "descartado": "Descartado"}
+
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=C_BG)
+        treeview_style()
+        self._rows: dict[str, dict] = {}
+        self._build()
+
+    def _build(self):
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=28, pady=(24, 12))
+        page_header(header, "LISTA_FORNECEDORES",
+                    "Cadastros incluídos na lista de Suprimentos e os que aguardam sua revisão.").pack(anchor="w")
+
+        ctrl = ctk.CTkFrame(self, fg_color="transparent")
+        ctrl.pack(fill="x", padx=28, pady=(0, 10))
+        secondary_button(ctrl, "⟳  Atualizar", self._load, width=110).pack(side="right", padx=(6, 0))
+        secondary_button(ctrl, "Processar agora", self._processar, width=140).pack(side="right")
+        self.lbl_status = ctk.CTkLabel(ctrl, text="", font=F_SMALL, text_color=C_MUTED)
+        self.lbl_status.pack(side="left")
+
+        tree_frame = card_frame(self)
+        tree_frame.pack(fill="both", expand=True, padx=28, pady=(0, 10))
+        cols = ("empresa", "cnpj", "status", "detalhe", "data")
+        self.tree = ttk.Treeview(tree_frame, show="headings", columns=cols,
+                                 style="App.Treeview", selectmode="browse")
+        for c, t, w in (("empresa", "Empresa", 220), ("cnpj", "CNPJ", 140), ("status", "Situação", 100),
+                        ("detalhe", "Motivo / linha na planilha", 380), ("data", "Cadastro", 120)):
+            self.tree.heading(c, text=t)
+            self.tree.column(c, width=w)
+        style_tree_stripes(self.tree)
+        sb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=sb.set)
+        self.tree.pack(side="left", fill="both", expand=True, padx=8, pady=8)
+        sb.pack(side="right", fill="y", pady=8)
+        self.tree.bind("<<TreeviewSelect>>", lambda _e: self._selecionar())
+
+        det = card_frame(self)
+        det.pack(fill="x", padx=28, pady=(0, 24))
+        inner = ctk.CTkFrame(det, fg_color="transparent")
+        inner.pack(fill="x", padx=16, pady=12)
+        field_label(inner, "Códigos da Legenda (separados por espaço, ex: 13.1 14.2):").pack(anchor="w")
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(4, 4))
+        self.ent_cod = ctk.CTkEntry(row, height=34, font=F_BODY)
+        self.ent_cod.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.btn_incluir = primary_button(row, "Incluir na lista", self._incluir, width=150)
+        self.btn_incluir.pack(side="left", padx=(0, 6))
+        self.btn_descartar = danger_button(row, "Descartar", self._descartar, width=110)
+        self.btn_descartar.pack(side="left")
+        self.lbl_info = ctk.CTkLabel(inner, text="Selecione um cadastro em Revisar ou Erro.",
+                                     font=F_SMALL, text_color=C_MUTED, justify="left", anchor="w")
+        self.lbl_info.pack(anchor="w", fill="x")
+        self._habilitar(False)
+        self._load()
+
+    def _habilitar(self, sim: bool):
+        estado = "normal" if sim else "disabled"
+        for w in (self.ent_cod, self.btn_incluir, self.btn_descartar):
+            w.configure(state=estado)
+
+    def _load(self):
+        db = db_from_env()
+        if not db:
+            self.lbl_status.configure(text="Banco de dados não configurado.", text_color=C_DANGER)
+            return
+        try:
+            db.preparar_lista()
+            rows = db.get_cadastros_lista()
+        except Exception as ex:
+            self.lbl_status.configure(text=f"Erro: {ex}", text_color=C_DANGER)
+            return
+        self.tree.delete(*self.tree.get_children())
+        self._rows = {r["id"]: r for r in rows}
+        for i, r in enumerate(rows):
+            d = r.get("dados") or {}
+            insert_striped(self.tree, i, (
+                d.get("razao_social", ""), d.get("cnpj", ""),
+                self._STATUS.get(r.get("lista_status"), r.get("lista_status")),
+                r.get("lista_detalhe") or "",
+                (r.get("criado_em") or "")[:16].replace("T", " "),
+            ), iid=r["id"])
+        pend = sum(r.get("lista_status") in ("revisar", "erro") for r in rows)
+        self.lbl_status.configure(text=f"{len(rows)} cadastro(s); {pend} aguardando revisão.",
+                                  text_color=C_DANGER if pend else C_MUTED)
+        self._selecionar()
+
+    def _selecionado(self) -> dict | None:
+        sel = self.tree.selection()
+        return self._rows.get(sel[0]) if sel else None
+
+    def _selecionar(self):
+        r = self._selecionado()
+        self.ent_cod.configure(state="normal")
+        self.ent_cod.delete(0, "end")
+        if not r or r.get("lista_status") not in ("revisar", "erro"):
+            self._habilitar(False)
+            self.lbl_info.configure(text="Selecione um cadastro em Revisar ou Erro.")
+            return
+        envio = r.get("lista_envio") or {}
+        self.ent_cod.insert(0, " ".join(c for c in (envio.get("Legenda") or "").split("|") if c))
+        self._habilitar(True)
+        d = r.get("dados") or {}
+        self.lbl_info.configure(
+            text=f"Serviços no bot: {d.get('servico', '')}\nRegionais: {d.get('estados', '')}"
+                 f" · UF da sede: {d.get('uf_receita') or '(sem)'} · Receita: {d.get('situacao_cnpj') or '(não consultado)'}")
+
+    def _codigos(self) -> list[str]:
+        import re
+        return list(dict.fromkeys(re.findall(r"\d+\.\d+", self.ent_cod.get())))
+
+    def _incluir(self):
+        r = self._selecionado()
+        if not r:
+            return
+        codigos = self._codigos()
+        if not codigos:
+            messagebox.showerror("Não dá para incluir", "Informe ao menos um código da Legenda (ex: 13.1).")
+            return
+        d = r.get("dados") or {}
+        if not messagebox.askyesno(
+                "Incluir no LISTA_FORNECEDORES",
+                f"Incluir uma linha na lista (prospectado = Sim):\n\n{d.get('razao_social', '')}\n"
+                f"{d.get('cnpj', '')}\nLegenda: {'|'.join(codigos)}\n\nMotivo da revisão: {r.get('lista_detalhe') or ''}"):
+            return
+        self.lbl_status.configure(text="Abrindo a planilha no Excel...", text_color=C_MUTED)
+        self._habilitar(False)
+
+        def tarefa():
+            import lista_fornecedores
+            try:
+                status, detalhe = lista_fornecedores.inserir_aprovado(
+                    db_from_env(), r, codigos, env.get("LISTA_FORNECEDORES"))
+                msg, cor = f"{self._STATUS.get(status, status)}: {detalhe}", C_SUCCESS
+            except Exception as ex:
+                msg, cor = f"Nada foi gravado: {ex}", C_DANGER
+            self.after(0, lambda: (self._load(), self.lbl_status.configure(text=msg, text_color=cor)))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _descartar(self):
+        r = self._selecionado()
+        if not r or not messagebox.askyesno(
+                "Descartar", "Não incluir este cadastro na lista? (continua salvo no DirecioZAP)"):
+            return
+        try:
+            db_from_env().marcar_lista(r["id"], "descartado", "Descartado no Manager", r.get("lista_envio"))
+        except Exception as ex:
+            messagebox.showerror("Erro", str(ex))
+        self._load()
+
+    def _processar(self):
+        modo = env.get("LISTA_ENVIO")
+        if modo not in ("auto", "revisar"):
+            messagebox.showinfo("Lista", "Inclusão na lista desligada: defina LISTA_ENVIO=auto "
+                                         "(ou revisar) no .env.")
+            return
+        self.lbl_status.configure(text="Processando...", text_color=C_MUTED)
+
+        def tarefa():
+            import lista_fornecedores
+            try:
+                res = lista_fornecedores.processar_pendentes(db_from_env(), modo, env.get("LISTA_FORNECEDORES"))
+                msg, cor = f"{len(res)} cadastro(s) processado(s).", C_MUTED
+            except Exception as ex:
+                msg, cor = f"Erro: {ex}", C_DANGER
+            self.after(0, lambda: (self._load(), self.lbl_status.configure(text=msg, text_color=cor)))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+
 # ── Tab: Configurações ────────────────────────────────────────
 class ConfiguracoesTab(ctk.CTkScrollableFrame):
     def __init__(self, parent):
@@ -1522,6 +1700,7 @@ class DirecioZAPApp(ctk.CTk):
             ("perguntas", "Perguntas"),
             ("mensagens", "Mensagens"),
             ("portal", "Portal"),
+            ("lista", "Lista"),
             ("configuracoes", "Configurações"),
             ("diagnostico", "Diagnóstico"),
             ("tutorial", "Tutorial"),
@@ -1577,6 +1756,7 @@ class DirecioZAPApp(ctk.CTk):
             "perguntas":      PerguntasTab(self.content),
             "mensagens":      MensagensTab(self.content),
             "portal":         PortalTab(self.content),
+            "lista":          ListaTab(self.content),
             "configuracoes":  ConfiguracoesTab(self.content),
             "diagnostico":    DiagnosticoTab(self.content),
             "tutorial":       TutorialTab(self.content),

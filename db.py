@@ -153,6 +153,7 @@ class Database:
                 # Banco anterior aos avisos: os cadastros que já existem não devem gerar e-mail.
                 conn.execute("ALTER TABLE cadastros ADD COLUMN notificado_em TIMESTAMPTZ")
                 conn.execute("UPDATE cadastros SET notificado_em = NOW()")
+            self._preparar_lista(conn)
             vazio = conn.execute("SELECT NOT EXISTS (SELECT 1 FROM perguntas)").fetchone()[0]
             if vazio:
                 conn.cursor().executemany(
@@ -176,6 +177,28 @@ class Database:
                             conn.execute("UPDATE perguntas SET ordem = %s WHERE campo = %s",
                                          (ordens[outro], campo))
             return vazio
+
+    @staticmethod
+    def _preparar_lista(conn) -> None:
+        """Colunas do LISTA_FORNECEDORES.xlsm (lista_fornecedores.py). Os cadastros que já
+        existiam quando elas foram criadas ficam como "anterior": só os novos entram na lista."""
+        sem_coluna = conn.execute(
+            "SELECT NOT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'cadastros' AND column_name = 'lista_status')"
+        ).fetchone()[0]
+        if not sem_coluna:
+            return
+        with conn.transaction():
+            conn.execute("ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS lista_status TEXT")
+            conn.execute("ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS lista_em TIMESTAMPTZ")
+            conn.execute("ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS lista_detalhe TEXT")
+            conn.execute("ALTER TABLE cadastros ADD COLUMN IF NOT EXISTS lista_envio JSONB")
+            conn.execute("UPDATE cadastros SET lista_status = 'anterior', lista_em = NOW(), "
+                         "lista_detalhe = 'Cadastro anterior à inclusão automática na lista'")
+
+    def preparar_lista(self) -> None:
+        with self._conn() as conn:
+            self._preparar_lista(conn)
 
     # ── Sessões ────────────────────────────────────────────────
 
@@ -307,6 +330,32 @@ class Database:
         self._query(
             "UPDATE cadastros SET portal_status = %s, portal_em = NOW(), portal_detalhe = %s, "
             "portal_envio = %s WHERE id = %s",
+            (status, detalhe, Jsonb(envio) if envio is not None else None, id_),
+            fetch=False,
+        )
+
+    # ── LISTA_FORNECEDORES.xlsm ───────────────────────────────
+
+    def get_cadastros_lista_pendentes(self, espera_min: int = 60) -> list[dict]:
+        """Cadastros ainda não processados para a lista. Espera o e-mail do Portal (pedido depois
+        da confirmação) ou, se o fornecedor não respondeu, espera_min minutos."""
+        return self._query(
+            "SELECT * FROM cadastros WHERE lista_status IS NULL AND (dados ? 'email_portal' "
+            "OR criado_em < NOW() - make_interval(mins => %s)) ORDER BY criado_em",
+            (espera_min,),
+        )
+
+    def get_cadastros_lista(self, limit: int = 100) -> list[dict]:
+        return self._query(
+            "SELECT * FROM cadastros WHERE lista_status IS NOT NULL AND lista_status <> 'anterior' "
+            "ORDER BY (lista_status IN ('revisar', 'erro')) DESC, criado_em DESC LIMIT %s",
+            (limit,),
+        )
+
+    def marcar_lista(self, id_: str, status: str, detalhe: str | None, envio: dict | None) -> None:
+        self._query(
+            "UPDATE cadastros SET lista_status = %s, lista_em = NOW(), lista_detalhe = %s, "
+            "lista_envio = %s WHERE id = %s",
             (status, detalhe, Jsonb(envio) if envio is not None else None, id_),
             fetch=False,
         )

@@ -4,7 +4,9 @@ Executada a cada 5 minutos pela tarefa agendada "DirecioZAP Avisos" (register_ta
 1. envia pelo Outlook deste PC os avisos de cadastros ainda não avisados (NOTIFY_EMAIL);
 2. cadastra no Portal do Fornecedor os fornecedores que deram o e-mail (PORTAL_ENVIO=auto;
    "revisar" deixa todos para aprovar no Manager; vazio = desligado) — ver portal.py;
-3. faz um GET no bot (BOT_URL) — o plano gratuito do Render adormece o serviço após 15 min
+3. inclui no LISTA_FORNECEDORES.xlsm os cadastros novos (LISTA_ENVIO=auto; "revisar" deixa
+   todos para aprovar no Manager; vazio = desligado) — ver lista_fornecedores.py;
+4. faz um GET no bot (BOT_URL) — o plano gratuito do Render adormece o serviço após 15 min
    sem requisições, e a primeira mensagem de um fornecedor levaria 30-60 s para ser
    respondida. Com o ping, o bot fica acordado enquanto este PC estiver ligado.
 
@@ -60,7 +62,8 @@ def main() -> int:
         if enviados or falhas:
             log.info("Avisos: %d enviado(s), %d pendente(s) para a próxima execução.", enviados, falhas)
         codigo = 1 if falhas else 0
-    return max(codigo, portal_pc(db, cfg.get("PORTAL_ENVIO"), para))
+    codigo = max(codigo, portal_pc(db, cfg.get("PORTAL_ENVIO"), para))
+    return max(codigo, lista_pc(db, cfg.get("LISTA_ENVIO"), cfg.get("LISTA_FORNECEDORES"), para))
 
 
 def portal_pc(db, modo: str | None, para: list[str]) -> int:
@@ -82,6 +85,28 @@ def portal_pc(db, modo: str | None, para: list[str]) -> int:
             enviar_outlook(para, *montar_email_portal(resultados))
         except Exception:
             log.exception("Falha ao enviar o resumo do Portal por e-mail")
+    return 0
+
+
+def lista_pc(db, modo: str | None, caminho: str | None, para: list[str]) -> int:
+    """Inclui no LISTA_FORNECEDORES.xlsm os cadastros prontos e manda um resumo se algo mudou."""
+    import lista_fornecedores
+    from notificacao import enviar_outlook, montar_email_lista
+
+    try:
+        resultados = lista_fornecedores.processar_pendentes(db, modo or "", caminho)
+    except Exception:
+        # Pasta T: inacessível, Excel com problema ou banco fora: nada foi marcado.
+        log.exception("Falha ao incluir cadastros no LISTA_FORNECEDORES")
+        return 1
+    for r in resultados:
+        log.info("Lista: %s — %s (%s)", (r["cadastro"].get("dados") or {}).get("cnpj"),
+                 r["status"], r["detalhe"])
+    if resultados and para:
+        try:
+            enviar_outlook(para, *montar_email_lista(resultados))
+        except Exception:
+            log.exception("Falha ao enviar o resumo da lista por e-mail")
     return 0
 
 
