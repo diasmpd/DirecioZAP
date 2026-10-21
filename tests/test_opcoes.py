@@ -31,6 +31,15 @@ def test_B_servicos_invalidos_ou_ambiguos(entrada):
     assert normalizar_servicos(entrada) is None
 
 
+def test_A_aceita_ate_cinco_servicos():
+    assert normalizar_servicos("1 a 5") == "; ".join(SERVICOS[:5])
+
+
+@pytest.mark.parametrize("entrada", ["1 a 6", "1, 2, 3, 4, 5, 6", "gás, pintura, grua, munck, guindaste, 1"])
+def test_B_mais_de_cinco_servicos_recusado(entrada):
+    assert normalizar_servicos(entrada) is None
+
+
 def test_A_servicos_gravados_separados_por_ponto_e_virgula():
     assert normalizar_servicos("1, 2") == f"{SERVICOS[0]}; {SERVICOS[1]}"
 

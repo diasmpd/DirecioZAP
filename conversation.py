@@ -16,7 +16,9 @@ import receita
 from log_setup import get_logger, mascarar
 from opcoes import (
     ESTADOS_ATENDIDOS,
+    MAX_SERVICOS,
     SERVICOS,
+    escolher,
     explicar_invalidos,
     menu,
     normalizar_estados_atendidos,
@@ -130,8 +132,8 @@ def _mensagem_ajuda(tipo: str) -> str:
     if tipo == "estados":
         return "Exemplo: MG, SP, RJ"
     if tipo == "servicos":
-        return ("Envie os números da lista, separados por vírgula (ex: 3, 15, 22) ou uma faixa "
-                "(ex: 3 a 5). Também vale o nome do serviço (ex: gás, pintura).")
+        return (f"Escolha até {MAX_SERVICOS} serviços. Envie os números da lista, separados por vírgula "
+                "(ex: 3, 15, 22) ou uma faixa (ex: 3 a 5). Também vale o nome do serviço (ex: gás, pintura).")
     if tipo == "estados_atendidos":
         return f"Envie os números ou as siglas, separados por vírgula (ex: MG, SP). Atendemos: {', '.join(ESTADOS_ATENDIDOS)}."
     return "Responda com um texto curto e direto."
@@ -188,6 +190,8 @@ def _pergunta(p: dict) -> str:
         return p["pergunta"]
     instrucao = ("Responda com os números, separados por vírgula (ex: 3, 15, 22)."
                  if len(opcoes) > 10 else "Responda com os números ou as siglas (ex: 1, 3).")
+    if opcoes is SERVICOS:
+        instrucao = f"Escolha até {MAX_SERVICOS} serviços. {instrucao}"
     # A instrução vem antes do menu: a lista de serviços é longa e o exemplo ficaria escondido no fim.
     return f"{p['pergunta']}\n{instrucao}\n\n{menu(opcoes)}"
 
@@ -455,6 +459,10 @@ class ConversationManager:
                     return MSGS["MAX_TENTATIVAS"]
                 update_session(phone, state, dados, tentativas)
                 opcoes = _MENUS.get(tipo.lower())
+                escolhidos, invalidos = escolher(text, SERVICOS) if opcoes is SERVICOS else ([], [])
+                if not invalidos and len(escolhidos) > MAX_SERVICOS:
+                    return (f"Você escolheu {len(escolhidos)} serviços, mas o limite é {MAX_SERVICOS}. "
+                            f"Envie só os {MAX_SERVICOS} principais (ex: 3, 15, 22).")
                 if opcoes:
                     detalhe = explicar_invalidos(text, opcoes)
                     return (f"Não consegui entender:\n{detalhe}\n\n"

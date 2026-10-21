@@ -417,6 +417,18 @@ class TestMenus:
         assert "mais de uma opção" in resp
         assert mock_session_module["update_session"].call_args[0][1] == "AGUARDA_servico"
 
+    def test_A_pergunta_de_servicos_avisa_o_limite(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_contato", {"razao_social": "X", "cnpj": CNPJ_FMT})
+        assert "Escolha até 5 serviços" in manager.process(PHONE, "c@e.com")
+
+    def test_B_mais_de_cinco_servicos_explica_e_nao_avanca(self, manager, mock_session_module):
+        mock_session_module["get_session"].return_value = _make_session(
+            "AGUARDA_servico", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com"})
+        resp = manager.process(PHONE, "1 a 7")
+        assert "Você escolheu 7 serviços, mas o limite é 5" in resp
+        assert mock_session_module["update_session"].call_args[0][1] == "AGUARDA_servico"
+
     def test_A_resumo_vem_com_botoes(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
             "AGUARDA_estados", {"razao_social": "X", "cnpj": CNPJ_FMT, "contato": "c@e.com", "servico": "Gás"})

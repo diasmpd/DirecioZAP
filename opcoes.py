@@ -3,7 +3,8 @@
 Fonte: listas da área de Suprimentos (out/2026). Os serviços ficam em ordem alfabética e o
 fornecedor responde com os números do menu ("3, 15, 22", "3 a 5") ou com o nome/parte do
 nome ("gás, pintura"). Um termo que bate com mais de um serviço é recusado como ambíguo, para
-não cadastrar o fornecedor num serviço que ele não escolheu.
+não cadastrar o fornecedor num serviço que ele não escolheu. Cada fornecedor escolhe no
+máximo MAX_SERVICOS serviços.
 """
 import re
 import unicodedata
@@ -93,6 +94,8 @@ SERVICOS = sorted(_SERVICOS_ORIGINAIS, key=_base)
 
 ESTADOS_ATENDIDOS = ["MG", "SP", "RJ", "BA", "PE", "DF/GO", "CE", "AM"]
 
+MAX_SERVICOS = 5
+
 _TODOS = {"TODOS", "TODAS", "TODOS OS ESTADOS", "NACIONAL", "BRASIL", "TODO O BRASIL"}
 
 
@@ -159,7 +162,7 @@ def explicar_invalidos(texto: str, opcoes: list[str]) -> str:
 
 def normalizar_servicos(texto: str) -> str | None:
     escolhidos, invalidos = escolher(texto, SERVICOS)
-    if invalidos or not escolhidos:
+    if invalidos or not escolhidos or len(escolhidos) > MAX_SERVICOS:
         return None
     return "; ".join(escolhidos)
 
