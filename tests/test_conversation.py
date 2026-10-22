@@ -534,3 +534,54 @@ class TestEmailPortal:
         resp = manager.process(PHONE, "a@b.com")
         assert resp == MSGS["ERRO_TECNICO"]
         mocks["delete_session"].assert_not_called()
+
+
+# ─────────────────────────────────────────────────────────────
+#  Perguntas padrão: o e-mail é perguntado no cadastro (o telefone é o do WhatsApp)
+# ─────────────────────────────────────────────────────────────
+
+class TestEmailNoCadastro:
+    DADOS = {"cnpj": CNPJ_FMT, "razao_social": "X", "email_portal": "compras@empresa.com.br",
+             "servico": "Y", "estados": "MG"}
+
+    @pytest.fixture
+    def mocks(self, mock_session_module):
+        from db import PERGUNTAS_PADRAO
+        perguntas = [
+            {"id": o, "ordem": o, "campo": c, "label": l, "pergunta": p, "tipo": t, "msg_erro": e, "ativo": True}
+            for o, c, l, p, t, e in PERGUNTAS_PADRAO
+        ]
+        mock_session_module["get_perguntas"].return_value = perguntas
+        mock_session_module["save_cadastro"].return_value = "id-1"
+        return mock_session_module
+
+    def test_A_padrao_nao_pergunta_telefone(self, mocks):
+        from db import PERGUNTAS_PADRAO
+        assert not any(t in ("telefone", "contato") for *_, t, _ in PERGUNTAS_PADRAO)
+
+    def test_A_email_digitado_vai_para_o_campo_do_portal(self, manager, mocks):
+        mocks["get_session"].return_value = _make_session("AGUARDA_email_portal", {"cnpj": CNPJ_FMT, "razao_social": "X"})
+        manager.process(PHONE, "é o Compras@Empresa.com.br")
+        assert mocks["update_session"].call_args[0][2]["email_portal"] == "compras@empresa.com.br"
+
+    def test_B_telefone_nao_vale_como_email(self, manager, mocks):
+        mocks["get_session"].return_value = _make_session("AGUARDA_email_portal", {"cnpj": CNPJ_FMT, "razao_social": "X"})
+        resp = manager.process(PHONE, "(31) 99999-0000")
+        assert "E-mail inválido" in resp
+        assert "email_portal" not in mocks["update_session"].call_args[0][2]
+
+    def test_A_confirmar_nao_pede_o_email_de_novo(self, manager, mocks):
+        mocks["get_session"].return_value = _make_session("CONFIRMACAO", dict(self.DADOS))
+        resp = manager.process(PHONE, "S")
+        assert MSGS["SUCESSO"] in resp and "compras@empresa.com.br" in resp
+        assert "Qual e-mail" not in resp
+        mocks["save_cadastro"].assert_called_once()
+        assert mocks["save_cadastro"].call_args[0][1]["email_portal"] == "compras@empresa.com.br"
+        mocks["delete_session"].assert_called_once_with(PHONE)
+        mocks["update_session"].assert_not_called()
+
+    @pytest.mark.parametrize("texto", ["ALTERAR EMAIL", "ALTERAR E-mail", "alterar e-mail"])
+    def test_A_alterar_email(self, manager, mocks, texto):
+        mocks["get_session"].return_value = _make_session("CONFIRMACAO", dict(self.DADOS))
+        manager.process(PHONE, texto)
+        assert mocks["update_session"].call_args[0][1] == "ALTERA_email_portal"

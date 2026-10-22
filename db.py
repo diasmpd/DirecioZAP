@@ -70,8 +70,9 @@ PERGUNTAS_PADRAO = [
     # CNPJ primeiro: a consulta na Receita preenche a Razão Social e ela não é perguntada.
     (1, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
     (2, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
-    (3, "contato", "Contato", "Qual o contato principal? (telefone ou e-mail):", "contato", "Formato inválido."),
-    (4, "servico", "Serviços", "Quais serviços sua empresa oferece? Pode escolher mais de um.", "servicos", None),
+    # O telefone não é perguntado: é o próprio número do WhatsApp. O e-mail vai para o Portal.
+    (3, "email_portal", "E-mail", "Qual o e-mail da empresa?", "email", "E-mail inválido."),
+    (4, "servico", "Serviços", "Quais serviços sua empresa oferece?", "servicos", None),
     (5, "estados", "Regionais", "Em quais regionais da Direcional vocês atendem? Pode escolher mais de uma.", "estados_atendidos", None),
 ]
 
@@ -176,6 +177,26 @@ class Database:
                         for campo, outro in (("cnpj", "razao_social"), ("razao_social", "cnpj")):
                             conn.execute("UPDATE perguntas SET ordem = %s WHERE campo = %s",
                                          (ordens[outro], campo))
+            # Out/2026: o Contato (telefone ou e-mail) vira só o e-mail — o telefone já é o
+            # número do WhatsApp. Só uma vez, e só se o Contato ainda for o padrão.
+            with conn.transaction():
+                primeira_vez = conn.execute(
+                    "INSERT INTO migracoes (nome) VALUES ('contato_vira_email') "
+                    "ON CONFLICT DO NOTHING RETURNING nome"
+                ).fetchone()
+                if primeira_vez and not vazio:
+                    _, campo, label, pergunta, tipo, msg_erro = PERGUNTAS_PADRAO[2]
+                    conn.execute(
+                        "UPDATE perguntas SET campo = %s, label = %s, pergunta = %s, tipo = %s, msg_erro = %s "
+                        "WHERE campo = 'contato' AND tipo = 'contato' "
+                        "AND NOT EXISTS (SELECT 1 FROM perguntas WHERE campo = %s)",
+                        (campo, label, pergunta, tipo, msg_erro, campo),
+                    )
+                    # A instrução do menu já diz quantos serviços escolher.
+                    conn.execute(
+                        "UPDATE perguntas SET pergunta = %s WHERE campo = 'servico' AND pergunta = %s",
+                        (PERGUNTAS_PADRAO[3][3], "Quais serviços sua empresa oferece? Pode escolher mais de um."),
+                    )
             return vazio
 
     @staticmethod

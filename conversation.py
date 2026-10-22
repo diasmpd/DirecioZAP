@@ -44,6 +44,7 @@ MSGS = {
         "Qual e-mail devemos usar no Portal?"
     ),
     "EMAIL_PORTAL_OK": "Obrigado! Vamos usar *{email}* no seu cadastro do Portal do Fornecedor, onde ficam as cotações.",
+    "EMAIL_PORTAL_JA_INFORMADO": "Vamos usar *{email}* no seu cadastro do Portal do Fornecedor, onde ficam as cotações.",
     "EMAIL_PORTAL_INVALIDO": "Não reconheci um e-mail. Envie no formato compras@suaempresa.com.br, ou toque em *Agora não*.",
     "LINK_PORTAL": (
         "Tudo bem! Quando quiser, cadastre-se no Portal do Fornecedor para ter acesso às cotações: "
@@ -128,7 +129,7 @@ def _mensagem_ajuda(tipo: str) -> str:
     if tipo == "telefone":
         return "Exemplo de telefone: (31) 99999-0000"
     if tipo == "email":
-        return "Exemplo de e-mail: contato@empresa.com"
+        return "Exemplo de e-mail: compras@suaempresa.com.br"
     if tipo == "estados":
         return "Exemplo: MG, SP, RJ"
     if tipo == "servicos":
@@ -140,19 +141,19 @@ def _mensagem_ajuda(tipo: str) -> str:
 
 
 _ALIASES_CAMPO = {
-    "RAZAO": "razao_social",
-    "SOCIAL": "razao_social",
-    "NOME": "razao_social",
-    "CNPJ": "cnpj",
-    "CONTATO": "contato",
-    "TELEFONE": "contato",
-    "EMAIL": "contato",
-    "E-MAIL": "contato",
-    "SERVICO": "servico",
-    "SERVICOS": "servico",
-    "ESTADO": "estados",
-    "ESTADOS": "estados",
-    "UF": "estados",
+    "RAZAO": ("razao_social",),
+    "SOCIAL": ("razao_social",),
+    "NOME": ("razao_social",),
+    "CNPJ": ("cnpj",),
+    "CONTATO": ("contato", portal.CAMPO_EMAIL),
+    "TELEFONE": ("contato",),
+    "EMAIL": (portal.CAMPO_EMAIL, "contato"),
+    "E-MAIL": (portal.CAMPO_EMAIL, "contato"),
+    "SERVICO": ("servico",),
+    "SERVICOS": ("servico",),
+    "ESTADO": ("estados",),
+    "ESTADOS": ("estados",),
+    "UF": ("estados",),
 }
 
 
@@ -171,9 +172,9 @@ def _campo_por_alteracao(text: str, perguntas: list[dict]) -> str | None:
 
     campos_existentes = {p["campo"] for p in perguntas}
     for palavra in palavras:
-        campo = _ALIASES_CAMPO.get(palavra)
-        if campo in campos_existentes:
-            return campo
+        for campo in _ALIASES_CAMPO.get(palavra, ()):
+            if campo in campos_existentes:
+                return campo
     return None
 
 
@@ -257,8 +258,8 @@ def _validar(text: str, tipo: str):
     if tipo == "cnpj":
         return normalizar_cnpj(text)
     if tipo == "email":
-        c = normalizar_contato(text)
-        return c if c and "@" in c else None
+        # Mesma regra do Portal: o e-mail aceito aqui é o que vai para o cadastro de lá.
+        return portal.normalizar_email(text)
     if tipo == "telefone":
         c = normalizar_contato(text)
         return c if c and "@" not in c else None
@@ -533,7 +534,15 @@ class ConversationManager:
                     return MSGS["ERRO_SALVAR"]
                 # O cadastro já está salvo: uma falha daqui em diante não pode levar o
                 # fornecedor a confirmar de novo (o que duplicaria o registro).
-                # A sessão segue só para pedir o e-mail do Portal.
+                email = dados.get(portal.CAMPO_EMAIL)
+                if email:
+                    # O e-mail já foi perguntado no cadastro: não há o que pedir depois.
+                    try:
+                        delete_session(phone)
+                    except Exception:
+                        log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
+                    return f"{MSGS['SUCESSO']}\n\n{MSGS['EMAIL_PORTAL_JA_INFORMADO'].format(email=email)}"
+                # Sem a pergunta do e-mail (desativada no Manager): a sessão segue só para pedi-lo.
                 pos = {"_cadastro_id": str(cadastro_id)}
                 sugestao = portal.normalizar_email(dados.get("contato", ""))
                 if sugestao:
