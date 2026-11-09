@@ -37,7 +37,15 @@ log = get_logger("conversation")
 MAX_TENTATIVAS = 3
 
 MSGS = {
-    "SAUDACAO": "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.",
+    "SAUDACAO": (
+        "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.\n\n"
+        "As informações fornecidas nesta conversa serão utilizadas para analisar o interesse da empresa "
+        "em fornecer produtos ou serviços ao Grupo Direcional, possibilitar contatos relacionados ao "
+        "processo e, quando aplicável, conduzir o cadastro e a homologação de fornecedores.\n\n"
+        "Eventuais dados pessoais informados durante o atendimento serão tratados conforme nossa "
+        "Política de Privacidade, disponível em:\n"
+        "https://ri.direcional.com.br/governanca-corporativa/estatuto-politicas-e-codigos/"
+    ),
     "SUCESSO": "Cadastro realizado com sucesso! Os responsáveis pela contratação entrarão em contato com você.",
     "PEDE_EMAIL_PORTAL": (
         "Para receber as cotações, sua empresa também precisa estar no Portal do Fornecedor. "
@@ -396,7 +404,7 @@ class ConversationManager:
 
         if state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return _com(f"{MSGS['SAUDACAO']}\nVou te guiar rapidinho no cadastro.", primeira)
+            return _com(f"{MSGS['SAUDACAO']}\n\nVou te guiar rapidinho no cadastro.", primeira)
 
         if state.startswith(("AGUARDA_", "ALTERA_")):
             # ALTERA_<campo>: correção de um único campo pedida no resumo; ao responder,

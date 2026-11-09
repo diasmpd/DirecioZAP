@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS migracoes (
 
 PERGUNTAS_PADRAO = [
     # CNPJ primeiro: a consulta na Receita preenche a Razão Social e ela não é perguntada.
-    (1, "cnpj", "CNPJ", "Informe o CNPJ da empresa:", "cnpj", "CNPJ inválido."),
+    (1, "cnpj", "CNPJ", "Por favor, informe o CNPJ da empresa.", "cnpj", "CNPJ inválido."),
     (2, "razao_social", "Razão Social", "Qual é a Razão Social da sua empresa?", "texto", None),
     # O telefone não é perguntado: é o próprio número do WhatsApp. O e-mail vai para o Portal.
     (3, "email_portal", "E-mail", "Qual o e-mail da empresa?", "email", "E-mail inválido."),
@@ -196,6 +196,18 @@ class Database:
                     conn.execute(
                         "UPDATE perguntas SET pergunta = %s WHERE campo = 'servico' AND pergunta = %s",
                         (PERGUNTAS_PADRAO[3][3], "Quais serviços sua empresa oferece? Pode escolher mais de um."),
+                    )
+            # Nov/2026: a saudação ganhou o aviso de privacidade e a pergunta do CNPJ, o
+            # "Por favor". Só uma vez, e só se a pergunta ainda for o texto padrão antigo.
+            with conn.transaction():
+                primeira_vez = conn.execute(
+                    "INSERT INTO migracoes (nome) VALUES ('cnpj_por_favor') "
+                    "ON CONFLICT DO NOTHING RETURNING nome"
+                ).fetchone()
+                if primeira_vez and not vazio:
+                    conn.execute(
+                        "UPDATE perguntas SET pergunta = %s WHERE campo = 'cnpj' AND pergunta = %s",
+                        (PERGUNTAS_PADRAO[0][3], "Informe o CNPJ da empresa:"),
                     )
             return vazio
 
