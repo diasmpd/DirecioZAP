@@ -59,6 +59,9 @@ MSGS = {
         f"{portal.URL}"
     ),
     "REINICIO": "Sem problemas, vamos recomeçar.",
+    # Recomeço forçado no meio da conversa (pergunta removida no Manager, estado desconhecido):
+    # o fornecedor já viu o aviso de privacidade, então não repete a saudação inteira.
+    "RECOMECO": "Precisamos recomeçar o seu cadastro.",
     "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
     "ERRO_SALVAR": "Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
     "MAX_TENTATIVAS": "Muitas tentativas inválidas. Envie uma mensagem para recomeçar.",
@@ -418,7 +421,7 @@ class ConversationManager:
                 delete_session(phone)
                 create_session(phone)
                 update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-                return _com(MSGS["SAUDACAO"], primeira)
+                return _com(MSGS["RECOMECO"], primeira)
 
             if intencao == "AJUDA":
                 return _com(_mensagem_ajuda(tipo), pergunta_cfg)
@@ -583,4 +586,4 @@ class ConversationManager:
         delete_session(phone)
         create_session(phone)
         update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
-        return _com(MSGS["SAUDACAO"], primeira)
+        return _com(MSGS["RECOMECO"], primeira)
