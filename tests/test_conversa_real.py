@@ -28,6 +28,12 @@ def _em(mocks, state, dados=None, tentativas=None, horas_atras=POUCO_TEMPO_ATRAS
     mocks["get_session"].return_value = _make_session(state, dados, tentativas, horas_atras)
 
 
+def _sem_tentativa(mocks, state, dados=None, tentativas=None):
+    """Respondeu sem contar tentativa: a sessão é só renovada (mesmo estado, dados e contagem),
+    para a janela de mensagens seguidas valer a partir desta resposta."""
+    mocks["update_session"].assert_called_once_with(PHONE, state, dados or {}, tentativas or {})
+
+
 class TestNaoFornecedor:
     def test_saudacao_tem_botao_nao_sou_fornecedor(self, manager, mocks):
         resp = manager.process(PHONE, "Olá")
@@ -54,7 +60,7 @@ class TestNaoFornecedor:
         resp = manager.process(PHONE, texto)
         assert URL_CONTATO_DIRECIONAL in resp
         assert "CNPJ" in resp  # quem é fornecedor pode seguir
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_cnpj")
         mocks["delete_session"].assert_not_called()
 
     def test_razao_social_com_palavra_de_cliente_continua_valendo(self, manager, mocks):
@@ -70,7 +76,7 @@ class TestSemCnpj:
         resp = manager.process(PHONE, texto)
         assert resp == MSGS["SEM_CNPJ"]
         assert CONTATO_EQUIPE in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_cnpj")
 
 
 class TestAtendente:
@@ -79,25 +85,25 @@ class TestAtendente:
         _em(mocks, "AGUARDA_cnpj")
         resp = manager.process(PHONE, texto)
         assert CONTATO_EQUIPE in resp and "CNPJ" in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_cnpj")
 
     def test_pedido_no_meio_da_frase(self, manager, mocks):
         _em(mocks, "AGUARDA_email_portal", {"cnpj": "x", "razao_social": "X"})
         resp = manager.process(PHONE, "prefiro falar com uma pessoa por favor")
         assert CONTATO_EQUIPE in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_email_portal", {"cnpj": "x", "razao_social": "X"})
 
     def test_pergunta_qualquer_nao_conta_tentativa(self, manager, mocks):
         _em(mocks, "AGUARDA_cnpj")
         resp = manager.process(PHONE, "quanto tempo demora a aprovação?")
         assert CONTATO_EQUIPE in resp and "CNPJ" in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_cnpj")
 
     def test_pergunta_nao_vira_razao_social(self, manager, mocks):
         _em(mocks, "AGUARDA_razao_social", {"cnpj": "11.222.333/0001-81"})
         resp = manager.process(PHONE, "O que é razão social?")
         assert "Razão Social" in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_razao_social", {"cnpj": "11.222.333/0001-81"})
 
     def test_ajuda_lista_o_comando(self):
         assert "ATENDENTE" in MSGS["AJUDA_GERAL"]
@@ -114,12 +120,12 @@ class TestMensagensSeguidas:
         _em(mocks, "AGUARDA_cnpj", horas_atras=MINUTOS_ATRAS)
         resp = manager.process(PHONE, "oi")
         assert MSGS["CONTINUAR"] in resp and "CNPJ" in resp
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_cnpj")
 
     def test_oi_nao_vira_razao_social(self, manager, mocks):
         _em(mocks, "AGUARDA_razao_social", {"cnpj": "x"}, horas_atras=MINUTOS_ATRAS)
         manager.process(PHONE, "Oi")
-        mocks["update_session"].assert_not_called()
+        _sem_tentativa(mocks, "AGUARDA_razao_social", {"cnpj": "x"})
 
     def test_cnpj_valido_logo_depois_continua_valendo(self, manager, mocks):
         _em(mocks, "AGUARDA_cnpj", horas_atras=POUCO_TEMPO_ATRAS)
@@ -159,7 +165,7 @@ class TestMidia:
         _em(mocks, "AGUARDA_cnpj", {}, {"cnpj": 1})
         resp = manager.process_midia(PHONE, "audio")
         assert MSGS["MIDIA_AUDIO"] in resp and "CNPJ" in resp
-        mocks["update_session"].assert_not_called()  # não conta como tentativa
+        _sem_tentativa(mocks, "AGUARDA_cnpj", {}, {"cnpj": 1})
 
     def test_foto_no_resumo_repete_o_resumo_com_botoes(self, manager, mocks):
         dados = {"cnpj": "x", "razao_social": "X", "email_portal": "a@b.com", "servico": "Y", "estados": "MG"}
@@ -179,3 +185,54 @@ class TestMidia:
     def test_midia_depois_do_fim(self, manager, mocks):
         _em(mocks, "CONCLUIDO")
         assert manager.process_midia(PHONE, "audio") == MSGS["CONCLUIDO"]
+
+
+class TestRevisao721e3fe:
+    """Achados da revisão do commit 721e3fe."""
+
+    @pytest.fixture
+    def com_pergunta_texto(self, mocks):
+        extra = {"id": 9, "ordem": 9, "campo": "alvara", "label": "Alvará", "pergunta": "Possui alvará?",
+                 "tipo": "texto", "msg_erro": None, "ativo": True}
+        mocks["get_perguntas"].return_value = mocks["get_perguntas"].return_value + [extra]
+        return mocks
+
+    @pytest.mark.parametrize("texto", ["Sim", "Ok", "Vi no Instagram", "Não", "Cadastro"])
+    def test_texto_livre_aceita_sim_ok_instagram(self, manager, com_pergunta_texto, texto):
+        _em(com_pergunta_texto, "AGUARDA_alvara", {"cnpj": "x"})
+        manager.process(PHONE, texto)
+        assert com_pergunta_texto["update_session"].call_args[0][2]["alvara"] == texto
+
+    @pytest.mark.parametrize("texto", ["oi", "Bom dia!", "tudo bem?"])
+    def test_texto_livre_ainda_ignora_cumprimento(self, manager, com_pergunta_texto, texto):
+        _em(com_pergunta_texto, "AGUARDA_alvara", {"cnpj": "x"})
+        assert manager.process(PHONE, texto) == ""
+
+    @pytest.mark.parametrize("texto", ["ok", "Vi no Instagram", "sim"])
+    def test_campo_estruturado_ainda_ignora_conversa(self, manager, mocks, texto):
+        _em(mocks, "AGUARDA_cnpj")
+        assert manager.process(PHONE, texto) == ""
+
+    @pytest.mark.parametrize("texto", ["pintura, assistencia tecnica xyz", "manutenção de imóvel qualquer"])
+    def test_servico_com_palavra_de_cliente_explica_o_item_invalido(self, manager, mocks, texto):
+        _em(mocks, "AGUARDA_servico", {"cnpj": "x", "razao_social": "X", "email_portal": "a@b.com"})
+        resp = manager.process(PHONE, texto)
+        assert URL_CONTATO_DIRECIONAL not in resp
+        assert "Não consegui entender" in resp
+
+    def test_celular_no_cnpj_nao_vira_aviso_de_cpf(self, manager, mocks):
+        _em(mocks, "AGUARDA_cnpj")
+        resp = manager.process(PHONE, "(31) 99999-0000")
+        assert resp != MSGS["SEM_CNPJ"]
+        assert mocks["update_session"].call_args[0][3] == {"cnpj": 1}  # conta como tentativa
+
+    def test_atendente_como_primeira_mensagem_abre_o_cadastro(self, manager, mocks):
+        resp = manager.process(PHONE, "atendente")
+        assert CONTATO_EQUIPE in resp and MSGS["SAUDACAO"] in resp and "CNPJ" in resp
+        assert mocks["update_session"].call_args[0][1] == "AGUARDA_cnpj"
+
+    def test_cpf_valido(self):
+        from conversation import _cpf_valido
+        assert _cpf_valido("12345678909")
+        assert not _cpf_valido("31999990000")
+        assert not _cpf_valido("11111111111")

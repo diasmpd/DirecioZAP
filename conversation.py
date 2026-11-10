@@ -142,6 +142,12 @@ _PALAVRAS_NAO_FORNECEDOR = (
     "VAGA DE", "VAGAS DE", "TRABALHAR NA", "RECLAMACAO", "RECLAMAR", "ASSISTENCIA TECNICA", "SAC",
 )
 _PALAVRAS_ATENDENTE = ("ATENDENTE", "FALAR COM", "HUMANO", "UMA PESSOA", "LIGAR", "TELEFONE DE VOCES")
+# Tipos em que a resposta tem formato próprio: "ok"/"sim"/"vi no Instagram" nunca é a resposta.
+_TIPOS_ESTRUTURADOS = {"cnpj", "email", "telefone", "contato", "servicos", "estados", "estados_atendidos"}
+# Tipos de menu: "assistência técnica" e "manutenção de imóvel" são serviços, não assunto de cliente.
+_TIPOS_MENU = {"servicos", "estados_atendidos"}
+_SAUDACOES = {"OI", "OIE", "OII", "OLA", "OLAA", "BOM", "BOA", "DIA", "TARDE", "NOITE", "TUDO", "BEM",
+              "E", "VOCE", "VC", "COMO", "VAI"}
 _PALAVRAS_SEM_CNPJ = (
     "NAO TENHO CNPJ", "SEM CNPJ", "NAO POSSUO CNPJ", "NAO TENHO", "PESSOA FISICA", "CPF", "AUTONOMO",
 )
@@ -202,12 +208,28 @@ def _contem(text: str, expressoes) -> bool:
     return any(f" {e} " in limpo for e in expressoes)
 
 
-def _e_conversa(text: str) -> bool:
-    """Cumprimento, agradecimento, emoji ou "quero me cadastrar" — sem dado nenhum."""
+def _e_conversa(text: str, tipo: str) -> bool:
+    """Cumprimento, agradecimento, emoji ou "quero me cadastrar" — sem dado nenhum.
+
+    Num campo de texto livre (ex: uma pergunta "Possui alvará?" criada no Manager), "Sim",
+    "Ok" ou "Vi no Instagram" são respostas de verdade: lá só cumprimento puro é conversa."""
     if not text.strip() or any(ch.isdigit() for ch in text) or "@" in text:
         return False
     palavras = _sem_pontuacao(text).split()
-    return all(p in _PALAVRAS_CONVERSA for p in palavras)
+    vocabulario = _PALAVRAS_CONVERSA if (tipo or "texto").lower() in _TIPOS_ESTRUTURADOS else _SAUDACOES
+    return all(p in vocabulario for p in palavras)
+
+
+def _cpf_valido(digitos: str) -> bool:
+    """Confere os dígitos verificadores — um celular com DDD também tem 11 dígitos."""
+    if len(digitos) != 11 or len(set(digitos)) == 1:
+        return False
+    nums = [int(d) for d in digitos]
+    for n in (9, 10):
+        dv = sum(nums[i] * (n + 1 - i) for i in range(n)) * 10 % 11 % 10
+        if dv != nums[n]:
+            return False
+    return True
 
 
 def _resposta_confirmacao(text: str) -> str | None:
@@ -526,12 +548,14 @@ class ConversationManager:
         session = self._sessao(phone)
         state = session["state"]
         dados = dict(session.get("dados") or {})
+        tentativas = dict(session.get("tentativas") or {})
 
         if state == "SAUDACAO":
             # Primeiro contato foi uma figurinha ou um áudio: é um "oi" — manda a saudação.
-            return self._handle(phone, "", state, dados, {}, perguntas, False)
+            return self._handle(phone, "", state, dados, tentativas, perguntas, False)
         if state == ESTADO_CONCLUIDO:
             return MSGS["CONCLUIDO"]
+        update_session(phone, state, dados, tentativas)  # renova a janela de mensagens seguidas
         return _com_botoes_do_resumo(prefixar(aviso, _repetir(state, dados, perguntas)))
 
     @staticmethod
@@ -567,7 +591,12 @@ class ConversationManager:
 
         if intencao == "ATENDENTE":
             if state == "SAUDACAO":
-                return MSGS["ATENDENTE"].split("\n")[0]
+                # Primeira mensagem já pede atendente: passa o contato e já abre o cadastro (com
+                # o aviso de privacidade), para que um CNPJ enviado em seguida valha como resposta.
+                update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
+                resp = _com(f"{MSGS['ATENDENTE']}\n\n{MSGS['SAUDACAO']}", primeira)
+                return resp if resp.botoes or resp.lista else Resposta(resp, botoes=[BOTAO_NAO_FORNECEDOR])
+            update_session(phone, state, dados, tentativas)
             return prefixar(MSGS["ATENDENTE"], _repetir(state, dados, perguntas))
 
         if intencao == "AJUDA" and state == "SAUDACAO":
@@ -626,28 +655,35 @@ class ConversationManager:
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
                 return _com("Sem problemas, vamos corrigir juntos.", destino)
 
+            def sem_contar(resposta):
+                """Responde sem contar tentativa, mas renova o horário da sessão: é ele que diz se a
+                próxima mensagem chegou "logo depois" da nossa (janela de mensagens seguidas)."""
+                update_session(phone, state, dados, tentativas)
+                return resposta
+
             # "Oi", "tudo bem?", 👍: não é resposta. Se chegou logo depois da nossa mensagem, o
             # fornecedor está escrevendo em várias mensagens seguidas — não responde de novo.
-            if _e_conversa(text):
-                return "" if recente else _com(MSGS["CONTINUAR"], pergunta_cfg)
+            if _e_conversa(text, tipo):
+                return "" if recente else sem_contar(_com(MSGS["CONTINUAR"], pergunta_cfg))
 
             # Uma pergunta ("o que é razão social?") não é resposta, nem num campo de texto livre.
-            if tipo == "texto" and text.strip().endswith("?"):
-                return _com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)
+            if tipo.lower() == "texto" and text.strip().endswith("?"):
+                return sem_contar(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg))
 
             valor = _validar(text, tipo)
 
             if valor is None:
                 # Respostas que não são erro de digitação: não contam como tentativa.
-                if _contem(text, _PALAVRAS_NAO_FORNECEDOR):
-                    return _com(f"{MSGS['NAO_FORNECEDOR']}\n\n{MSGS['SE_FOR_FORNECEDOR']}", pergunta_cfg)
-                if tipo == "cnpj" and (_contem(text, _PALAVRAS_SEM_CNPJ)
-                                       or len(re.sub(r"\D", "", text)) == 11):
-                    return MSGS["SEM_CNPJ"]
+                if tipo.lower() not in _TIPOS_MENU and _contem(text, _PALAVRAS_NAO_FORNECEDOR):
+                    return sem_contar(_com(f"{MSGS['NAO_FORNECEDOR']}\n\n{MSGS['SE_FOR_FORNECEDOR']}",
+                                           pergunta_cfg))
+                if tipo.lower() == "cnpj" and (_contem(text, _PALAVRAS_SEM_CNPJ)
+                                       or _cpf_valido(re.sub(r"\D", "", text))):
+                    return sem_contar(MSGS["SEM_CNPJ"])
                 if _contem(text, _PALAVRAS_ATENDENTE):
-                    return _com(MSGS["ATENDENTE"], pergunta_cfg)
+                    return sem_contar(_com(MSGS["ATENDENTE"], pergunta_cfg))
                 if text.strip().endswith("?"):
-                    return _com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)
+                    return sem_contar(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg))
 
                 n = tentativas.get(campo, 0) + 1
                 tentativas[campo] = n
