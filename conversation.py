@@ -37,7 +37,7 @@ log = get_logger("conversation")
 MAX_TENTATIVAS = 3
 
 # Contato da equipe para quem precisa falar com uma pessoa, e página para quem não é fornecedor.
-CONTATO_EQUIPE = "(31) 9758-1137"
+CONTATO_EQUIPE = "(31) 99758-1137"
 URL_CONTATO_DIRECIONAL = "https://www.direcional.com.br/contato-direcional/"
 
 # Mensagem de "oi"/"tudo bem?" que chega logo depois da resposta do bot (o fornecedor escreveu
