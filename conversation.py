@@ -36,6 +36,17 @@ log = get_logger("conversation")
 
 MAX_TENTATIVAS = 3
 
+# Contato da equipe para quem precisa falar com uma pessoa, e página para quem não é fornecedor.
+CONTATO_EQUIPE = "(31) 9758-1137"
+URL_CONTATO_DIRECIONAL = "https://www.direcional.com.br/contato-direcional/"
+
+# Mensagem de "oi"/"tudo bem?" que chega logo depois da resposta do bot (o fornecedor escreveu
+# em várias mensagens seguidas) é ignorada em silêncio, em vez de contar como resposta errada.
+JANELA_RAJADA_S = 60
+
+ESTADO_CONCLUIDO = "CONCLUIDO"
+BOTAO_NAO_FORNECEDOR = ("NAO_FORNECEDOR", "Não sou fornecedor")
+
 MSGS = {
     "SAUDACAO": (
         "Olá! Seja bem-vindo(a) ao cadastro de fornecedores da Direcional.\n\n"
@@ -64,8 +75,39 @@ MSGS = {
     "RECOMECO": "Precisamos recomeçar o seu cadastro.",
     "ERRO_TECNICO": "Tivemos um problema técnico ao processar sua mensagem. Por favor, envie novamente em alguns minutos.",
     "ERRO_SALVAR": "Ocorreu um problema técnico ao salvar. Por favor, tente novamente mais tarde.",
-    "MAX_TENTATIVAS": "Muitas tentativas inválidas. Envie uma mensagem para recomeçar.",
+    # Depois de 3 respostas inválidas a conversa continua (as respostas já dadas são mantidas),
+    # mas o fornecedor recebe a saída para falar com uma pessoa.
+    "MAX_TENTATIVAS": (
+        "Parece que essa pergunta está difícil. Se preferir, fale com a nossa equipe pelo "
+        f"{CONTATO_EQUIPE}. Ou digite CANCELAR para encerrar."
+    ),
     "APENAS_TEXTO": "Por favor, responda apenas com texto.",
+    "MIDIA_AUDIO": "Ainda não consigo ouvir áudios. Por favor, escreva a sua resposta.",
+    "MIDIA_ARQUIVO": "Ainda não consigo ler imagens nem arquivos. Por favor, digite a sua resposta.",
+    "NAO_FORNECEDOR": (
+        "Este canal é só para o cadastro de fornecedores da Direcional. Para comprar um imóvel, "
+        "falar sobre a sua unidade, trabalhar na Direcional ou outros assuntos, acesse:\n"
+        f"{URL_CONTATO_DIRECIONAL}"
+    ),
+    "SE_FOR_FORNECEDOR": "Se você é fornecedor, é só continuar respondendo:",
+    "ATENDENTE": (
+        f"Para falar com a nossa equipe, ligue ou mande mensagem para o {CONTATO_EQUIPE}.\n"
+        "Se quiser continuar o cadastro por aqui, é só responder:"
+    ),
+    "PERGUNTA_LIVRE": (
+        "Por aqui eu só consigo fazer o cadastro. Para dúvidas, fale com a nossa equipe pelo "
+        f"{CONTATO_EQUIPE}.\nPara continuar o cadastro, é só responder:"
+    ),
+    "SEM_CNPJ": (
+        "O cadastro de fornecedores precisa de um CNPJ (MEI também vale). Se tiver dúvidas, fale "
+        f"com a nossa equipe pelo {CONTATO_EQUIPE}.\nQuando tiver o CNPJ, é só enviar aqui."
+    ),
+    "CONTINUAR": "Vamos continuar o cadastro:",
+    "CONCLUIDO": (
+        "Seu cadastro já foi concluído. Obrigado!\n"
+        "Para cadastrar outra empresa, digite RECOMEÇAR. Para falar com a nossa equipe: "
+        f"{CONTATO_EQUIPE}."
+    ),
     "SEM_CONFIG": "Bot sem perguntas configuradas. Entre em contato com o administrador.",
     "CONFIRMACAO_INVALIDA": "Por favor, responda S para confirmar ou N para recomeçar.",
     "CANCELADO": "Tudo bem! Encerramos por aqui. Quando quiser retomar, é só enviar uma mensagem.",
@@ -74,6 +116,7 @@ MSGS = {
         "• Digite AJUDA para receber exemplos de resposta\n"
         "• Digite VOLTAR para corrigir a pergunta anterior\n"
         "• Digite RECOMEÇAR para iniciar do zero\n"
+        "• Digite ATENDENTE para falar com a nossa equipe\n"
         "• Digite CANCELAR para encerrar"
     ),
 }
@@ -85,6 +128,31 @@ _INTENT_REINICIAR = {"RECOMECAR", "REINICIAR", "COMECAR DE NOVO", "INICIAR DE NO
 _INTENT_CANCELAR = {"CANCELAR", "PARAR", "SAIR", "ENCERRAR", "DESISTIR"}
 _INTENT_VOLTAR = {"VOLTAR", "VOLTA"}
 _VERBOS_ALTERAR = {"ALTERAR", "MUDAR", "EDITAR", "CORRIGIR"}
+_INTENT_NAO_FORNECEDOR = {"NAO_FORNECEDOR", "NAO SOU FORNECEDOR", "NAO SOU FORNECEDORA"}
+_INTENT_ATENDENTE = {
+    "ATENDENTE", "ATENDIMENTO", "HUMANO", "FALAR COM ATENDENTE", "FALAR COM UM ATENDENTE",
+    "FALAR COM ALGUEM", "FALAR COM UMA PESSOA", "QUERO FALAR COM ALGUEM", "QUERO FALAR COM UM ATENDENTE",
+}
+
+# Só olhados quando a resposta NÃO é válida para a pergunta — assim "Imóveis XYZ Ltda" como
+# Razão Social continua valendo. Comparação por palavra inteira, sem acento.
+_PALAVRAS_NAO_FORNECEDOR = (
+    "NAO SOU FORNECEDOR", "COMPRAR", "COMPRA DE", "APARTAMENTO", "APTO", "IMOVEL", "MINHA UNIDADE",
+    "MEU APARTAMENTO", "FINANCIAMENTO", "BOLETO", "PARCELA", "CORRETOR", "CURRICULO", "EMPREGO",
+    "VAGA DE", "VAGAS DE", "TRABALHAR NA", "RECLAMACAO", "RECLAMAR", "ASSISTENCIA TECNICA", "SAC",
+)
+_PALAVRAS_ATENDENTE = ("ATENDENTE", "FALAR COM", "HUMANO", "UMA PESSOA", "LIGAR", "TELEFONE DE VOCES")
+_PALAVRAS_SEM_CNPJ = (
+    "NAO TENHO CNPJ", "SEM CNPJ", "NAO POSSUO CNPJ", "NAO TENHO", "PESSOA FISICA", "CPF", "AUTONOMO",
+)
+# "Oi", "bom dia", "tudo bem?", "quero me cadastrar", 👍: conversa, não resposta à pergunta.
+_PALAVRAS_CONVERSA = {
+    "OI", "OIE", "OII", "OLA", "OLAA", "BOM", "BOA", "DIA", "TARDE", "NOITE", "TUDO", "BEM", "BEM?",
+    "E", "VOCE", "VC", "COMO", "VAI", "OK", "OBRIGADO", "OBRIGADA", "VALEU", "BLZ", "BELEZA", "TA",
+    "CERTO", "ENTENDI", "PESSOAL", "QUERO", "GOSTARIA", "DE", "ME", "CADASTRAR", "CADASTRO", "SER",
+    "FORNECEDOR", "FORNECEDORA", "FAZER", "O", "MEU", "UM", "UMA", "VI", "NO", "NA", "POST",
+    "LINKEDIN", "INSTAGRAM", "INSTA", "AQUI", "TUDO", "BOM", "SIM",
+}
 
 # Confirmação do resumo: decide pela primeira palavra, ignorando pontuação e acento,
 # para aceitar "Sim!", "s.", "Sim, confirmo" e "Não." — antes só "S"/"SIM" exatos passavam.
@@ -115,8 +183,31 @@ def _detectar_intencao(text: str) -> str | None:
         return "REINICIAR"
     if base in _INTENT_AJUDA:
         return "AJUDA"
+    sem_pontuacao = _sem_pontuacao(text)
+    if base in _INTENT_NAO_FORNECEDOR or sem_pontuacao in _INTENT_NAO_FORNECEDOR:
+        return "NAO_FORNECEDOR"
+    if sem_pontuacao in _INTENT_ATENDENTE:
+        return "ATENDENTE"
 
     return None
+
+
+def _sem_pontuacao(text: str) -> str:
+    """Texto base só com letras, números e espaços (tira emoji, ?, !, vírgulas)."""
+    return " ".join(re.sub(r"[^A-Z0-9 ]", " ", _texto_base(text)).split())
+
+
+def _contem(text: str, expressoes) -> bool:
+    limpo = f" {_sem_pontuacao(text)} "
+    return any(f" {e} " in limpo for e in expressoes)
+
+
+def _e_conversa(text: str) -> bool:
+    """Cumprimento, agradecimento, emoji ou "quero me cadastrar" — sem dado nenhum."""
+    if not text.strip() or any(ch.isdigit() for ch in text) or "@" in text:
+        return False
+    palavras = _sem_pontuacao(text).split()
+    return all(p in _PALAVRAS_CONVERSA for p in palavras)
 
 
 def _resposta_confirmacao(text: str) -> str | None:
@@ -323,7 +414,7 @@ def _responder_email_portal(phone: str, text: str, dados: dict, tentativas: dict
     sugestao = dados.get("_sugestao_email")
 
     if base in _PULAR:
-        delete_session(phone)
+        _concluir(phone)
         return MSGS["LINK_PORTAL"]
 
     email = portal.normalizar_email(text)
@@ -334,7 +425,7 @@ def _responder_email_portal(phone: str, text: str, dados: dict, tentativas: dict
     if email is None:
         n = tentativas.get(ESTADO_EMAIL_PORTAL, 0) + 1
         if n >= MAX_TENTATIVAS:
-            delete_session(phone)
+            _concluir(phone)
             return MSGS["LINK_PORTAL"]
         tentativas[ESTADO_EMAIL_PORTAL] = n
         update_session(phone, ESTADO_EMAIL_PORTAL, dados, tentativas)
@@ -347,10 +438,47 @@ def _responder_email_portal(phone: str, text: str, dados: dict, tentativas: dict
         log.exception("Erro ao gravar o e-mail do Portal de %s", mascarar(phone))
         return MSGS["ERRO_TECNICO"]
     try:
-        delete_session(phone)
+        _concluir(phone)
     except Exception:
         log.exception("E-mail do Portal salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
     return MSGS["EMAIL_PORTAL_OK"].format(email=email)
+
+
+def _concluir(phone: str) -> None:
+    """Cadastro terminado: a sessão fica em CONCLUIDO, sem nenhum dado, para que o "obrigado"
+    seguinte não abra um cadastro novo. Ela some na limpeza de 24h, como as demais."""
+    update_session(phone, ESTADO_CONCLUIDO, {}, {})
+
+
+def _recente(session: dict) -> bool:
+    """O bot respondeu há menos de JANELA_RAJADA_S segundos?"""
+    try:
+        ts = datetime.fromisoformat(str(session.get("atualizado_em", "")).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - ts < timedelta(seconds=JANELA_RAJADA_S)
+
+
+def _repetir(state: str, dados: dict, perguntas: list[dict]) -> str:
+    """O que o fornecedor precisa responder agora, para repetir depois de um aviso."""
+    if state.startswith(("AGUARDA_", "ALTERA_")):
+        campo = state.split("_", 1)[1]
+        p = next((p for p in perguntas if p["campo"] == campo), None)
+        if p:
+            return _pergunta(p)
+    if state == "CONFIRMACAO":
+        return _gerar_resumo(dados, perguntas)
+    if state == ESTADO_EMAIL_PORTAL:
+        botoes = [_BOTAO_USAR, _BOTAO_PULAR] if dados.get("_sugestao_email") else [_BOTAO_PULAR]
+        return Resposta(MSGS["PEDE_EMAIL_PORTAL"], botoes=botoes)
+    return _pergunta(perguntas[0])
+
+
+def _com_botoes_do_resumo(resposta):
+    # Toda resposta que traz o resumo pede confirmação: vai com os botões.
+    if resposta and _RESUMO_TITULO in resposta and not getattr(resposta, "botoes", None):
+        return Resposta(resposta, botoes=_BOTOES_CONFIRMACAO)
+    return resposta
 
 
 def _sessao_expirada(session: dict) -> bool:
@@ -367,27 +495,55 @@ def _sessao_expirada(session: dict) -> bool:
 class ConversationManager:
 
     def process(self, phone: str, text: str) -> str:
+        """Responde a uma mensagem de texto. Uma resposta vazia ("") quer dizer: não responder."""
         perguntas = get_perguntas()
         if not perguntas:
             return MSGS["SEM_CONFIG"]
 
+        session = self._sessao(phone)
+        state = session["state"]
+        dados = dict(session.get("dados") or {})
+        tentativas = dict(session.get("tentativas") or {})
+
+        resposta = self._handle(phone, text, state, dados, tentativas, perguntas, _recente(session))
+        return _com_botoes_do_resumo(resposta)
+
+    def process_midia(self, phone: str, tipo: str) -> str:
+        """Áudio, foto, figurinha etc.: avisa que só lemos texto e repete a pergunta atual, sem
+        contar como resposta errada. Reação (👍 numa mensagem) e tipos de sistema: sem resposta."""
+        if tipo in {"audio", "voice"}:
+            aviso = MSGS["MIDIA_AUDIO"]
+        elif tipo in {"image", "document", "video"}:
+            aviso = MSGS["MIDIA_ARQUIVO"]
+        elif tipo in {"sticker", "location", "contacts"}:
+            aviso = MSGS["APENAS_TEXTO"]
+        else:
+            return ""
+
+        perguntas = get_perguntas()
+        if not perguntas:
+            return MSGS["SEM_CONFIG"]
+        session = self._sessao(phone)
+        state = session["state"]
+        dados = dict(session.get("dados") or {})
+
+        if state == "SAUDACAO":
+            # Primeiro contato foi uma figurinha ou um áudio: é um "oi" — manda a saudação.
+            return self._handle(phone, "", state, dados, {}, perguntas, False)
+        if state == ESTADO_CONCLUIDO:
+            return MSGS["CONCLUIDO"]
+        return _com_botoes_do_resumo(prefixar(aviso, _repetir(state, dados, perguntas)))
+
+    @staticmethod
+    def _sessao(phone: str) -> dict:
         session = get_session(phone)
         if session is None or _sessao_expirada(session):
             if session:
                 delete_session(phone)
             session = create_session(phone)
+        return session
 
-        state = session["state"]
-        dados = dict(session.get("dados") or {})
-        tentativas = dict(session.get("tentativas") or {})
-
-        resposta = self._handle(phone, text, state, dados, tentativas, perguntas)
-        # Toda resposta que traz o resumo pede confirmação: vai com os botões.
-        if _RESUMO_TITULO in resposta and not getattr(resposta, "botoes", None):
-            resposta = Resposta(resposta, botoes=_BOTOES_CONFIRMACAO)
-        return resposta
-
-    def _handle(self, phone, text, state, dados, tentativas, perguntas):
+    def _handle(self, phone, text, state, dados, tentativas, perguntas, recente=False):
         primeira = perguntas[0]
         intencao = _detectar_intencao(text)
 
@@ -401,13 +557,29 @@ class ConversationManager:
             update_session(phone, f"AGUARDA_{primeira['campo']}", {}, {})
             return _com(MSGS["REINICIO"], primeira)
 
+        if intencao == "NAO_FORNECEDOR":
+            delete_session(phone)
+            return MSGS["NAO_FORNECEDOR"]
+
+        if state == ESTADO_CONCLUIDO:
+            # Sem update_session: a sessão concluída expira 24h depois do fim do cadastro.
+            return MSGS["CONCLUIDO"]
+
+        if intencao == "ATENDENTE":
+            if state == "SAUDACAO":
+                return MSGS["ATENDENTE"].split("\n")[0]
+            return prefixar(MSGS["ATENDENTE"], _repetir(state, dados, perguntas))
+
         if intencao == "AJUDA" and state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
             return _com(MSGS["AJUDA_GERAL"], primeira)
 
         if state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
-            return _com(f"{MSGS['SAUDACAO']}\n\nVou te guiar rapidinho no cadastro.", primeira)
+            resp = _com(f"{MSGS['SAUDACAO']}\n\nVou te guiar rapidinho no cadastro.", primeira)
+            if not resp.botoes and not resp.lista:
+                resp = Resposta(resp, botoes=[BOTAO_NAO_FORNECEDOR])
+            return resp
 
         if state.startswith(("AGUARDA_", "ALTERA_")):
             # ALTERA_<campo>: correção de um único campo pedida no resumo; ao responder,
@@ -454,9 +626,29 @@ class ConversationManager:
                 update_session(phone, f"AGUARDA_{destino['campo']}", dados, tentativas)
                 return _com("Sem problemas, vamos corrigir juntos.", destino)
 
+            # "Oi", "tudo bem?", 👍: não é resposta. Se chegou logo depois da nossa mensagem, o
+            # fornecedor está escrevendo em várias mensagens seguidas — não responde de novo.
+            if _e_conversa(text):
+                return "" if recente else _com(MSGS["CONTINUAR"], pergunta_cfg)
+
+            # Uma pergunta ("o que é razão social?") não é resposta, nem num campo de texto livre.
+            if tipo == "texto" and text.strip().endswith("?"):
+                return _com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)
+
             valor = _validar(text, tipo)
 
             if valor is None:
+                # Respostas que não são erro de digitação: não contam como tentativa.
+                if _contem(text, _PALAVRAS_NAO_FORNECEDOR):
+                    return _com(f"{MSGS['NAO_FORNECEDOR']}\n\n{MSGS['SE_FOR_FORNECEDOR']}", pergunta_cfg)
+                if tipo == "cnpj" and (_contem(text, _PALAVRAS_SEM_CNPJ)
+                                       or len(re.sub(r"\D", "", text)) == 11):
+                    return MSGS["SEM_CNPJ"]
+                if _contem(text, _PALAVRAS_ATENDENTE):
+                    return _com(MSGS["ATENDENTE"], pergunta_cfg)
+                if text.strip().endswith("?"):
+                    return _com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)
+
                 n = tentativas.get(campo, 0) + 1
                 tentativas[campo] = n
                 if n >= MAX_TENTATIVAS and alterando:
@@ -467,8 +659,10 @@ class ConversationManager:
                         f"{_gerar_resumo(dados, perguntas)}"
                     )
                 if n >= MAX_TENTATIVAS:
-                    delete_session(phone)
-                    return MSGS["MAX_TENTATIVAS"]
+                    # Não apaga o que já foi respondido: zera a contagem e oferece a equipe.
+                    tentativas.pop(campo, None)
+                    update_session(phone, state, dados, tentativas)
+                    return _com(f"{MSGS['MAX_TENTATIVAS']}\n\nDica: {_mensagem_ajuda(tipo)}", pergunta_cfg)
                 update_session(phone, state, dados, tentativas)
                 opcoes = _MENUS.get(tipo.lower())
                 escolhidos, invalidos = escolher(text, SERVICOS) if opcoes is SERVICOS else ([], [])
@@ -549,7 +743,7 @@ class ConversationManager:
                 if email:
                     # O e-mail já foi perguntado no cadastro: não há o que pedir depois.
                     try:
-                        delete_session(phone)
+                        _concluir(phone)
                     except Exception:
                         log.exception("Cadastro salvo, mas falhou ao encerrar sessão de %s", mascarar(phone))
                     return f"{MSGS['SUCESSO']}\n\n{MSGS['EMAIL_PORTAL_JA_INFORMADO'].format(email=email)}"

@@ -81,17 +81,19 @@ def _assinatura_meta_valida(raw_body: bytes, header: str | None) -> bool:
     return hmac.compare_digest(esperado, header[len("sha256="):])
 
 
-def _responder(phone: str, text: str) -> None:
-    """Processa a mensagem e responde. Uma falha (ex: banco de dados fora do ar) não pode
-    sumir em silêncio: o fornecedor recebe um aviso para tentar de novo."""
-    log.info("Mensagem recebida de %s", mascarar(phone))
+def _responder(phone: str, text: str | None = None, midia: str | None = None) -> None:
+    """Processa a mensagem (texto, ou o tipo de mídia recebido) e responde. Uma falha (ex: banco
+    de dados fora do ar) não pode sumir em silêncio: o fornecedor recebe um aviso para tentar de
+    novo. Resposta vazia = o bot decidiu não responder (ex: "oi" logo depois da pergunta)."""
+    log.info("Mensagem recebida de %s%s", mascarar(phone), f" ({midia})" if midia else "")
     try:
-        response = manager.process(phone, text)
+        response = manager.process_midia(phone, midia) if midia else manager.process(phone, text)
     except Exception:
         log.exception("Erro ao processar mensagem de %s", mascarar(phone))
         send_message(phone, MSGS["ERRO_TECNICO"])
         return
-    send_message(phone, response)
+    if response:
+        send_message(phone, response)
 
 
 @app.get("/")
@@ -130,7 +132,8 @@ async def _handle_twilio(request: Request):
         return Response(status_code=200)
 
     if num_media > 0:
-        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
+        tipo = str(form.get("MediaContentType0", "")).split("/")[0]
+        await asyncio.to_thread(_responder, phone, None, tipo if tipo in {"audio", "image", "video"} else "document")
         return Response(status_code=200)
 
     if not text:
@@ -179,7 +182,8 @@ async def _handle_meta(request: Request):
     elif msg.get("type") == "text":
         text = msg.get("text", {}).get("body", "").strip()
     else:
-        await asyncio.to_thread(send_message, phone, "Por favor, responda apenas com texto.")
+        # Áudio, foto, figurinha...: o bot avisa e repete a pergunta; reação (👍) fica sem resposta.
+        await asyncio.to_thread(_responder, phone, None, msg.get("type") or "")
         return Response(status_code=200)
 
     if not text:

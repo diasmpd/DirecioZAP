@@ -165,7 +165,9 @@ class TestFluxoErro:
         )
         resp = manager.process(PHONE, "00000000000000")
         assert MSGS["MAX_TENTATIVAS"] in resp
-        mock_session_module["delete_session"].assert_called_once_with(PHONE)
+        mock_session_module["delete_session"].assert_not_called()
+        update = mock_session_module["update_session"].call_args[0]
+        assert update[1] == "AGUARDA_cnpj" and update[2].get("razao_social") == "X" and update[3] == {}
 
     def test_B_contato_invalido_max_tentativas(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
@@ -173,7 +175,9 @@ class TestFluxoErro:
         )
         resp = manager.process(PHONE, "invalido")
         assert MSGS["MAX_TENTATIVAS"] in resp
-        mock_session_module["delete_session"].assert_called_once_with(PHONE)
+        mock_session_module["delete_session"].assert_not_called()
+        update = mock_session_module["update_session"].call_args[0]
+        assert update[1] == "AGUARDA_contato" and update[2].get("razao_social") == "X" and update[3] == {}
 
     def test_B_estados_invalidos_max_tentativas(self, manager, mock_session_module):
         mock_session_module["get_session"].return_value = _make_session(
@@ -493,7 +497,8 @@ class TestEmailPortal:
         resp = manager.process(PHONE, texto)
         mocks["completar_cadastro"].assert_called_once_with("id-1", {"email_portal": "compras@empresa.com.br"})
         assert "compras@empresa.com.br" in resp
-        mocks["delete_session"].assert_called_once_with(PHONE)
+        mocks["update_session"].assert_called_with(PHONE, "CONCLUIDO", {}, {})
+        mocks["delete_session"].assert_not_called()
 
     def test_A_email_digitado_vale_mais_que_a_sugestao(self, manager, mocks):
         self._em_email(mocks, sugestao="contato@empresa.com.br")
@@ -506,7 +511,8 @@ class TestEmailPortal:
         resp = manager.process(PHONE, texto)
         assert "fornecedor.direcional.com.br" in resp
         mocks["completar_cadastro"].assert_not_called()
-        mocks["delete_session"].assert_called_once_with(PHONE)
+        mocks["update_session"].assert_called_with(PHONE, "CONCLUIDO", {}, {})
+        mocks["delete_session"].assert_not_called()
 
     def test_B_texto_sem_email_pede_de_novo(self, manager, mocks):
         self._em_email(mocks)
@@ -519,7 +525,8 @@ class TestEmailPortal:
         self._em_email(mocks, tentativas={"EMAIL_PORTAL": MAX_TENTATIVAS - 1})
         resp = manager.process(PHONE, "???")
         assert "fornecedor.direcional.com.br" in resp
-        mocks["delete_session"].assert_called_once_with(PHONE)
+        mocks["update_session"].assert_called_with(PHONE, "CONCLUIDO", {}, {})
+        mocks["delete_session"].assert_not_called()
 
     def test_B_falha_ao_abrir_etapa_ainda_confirma_com_link(self, manager, mocks):
         mocks["update_session"].side_effect = IOError("timeout")
@@ -577,8 +584,8 @@ class TestEmailNoCadastro:
         assert "Qual e-mail" not in resp
         mocks["save_cadastro"].assert_called_once()
         assert mocks["save_cadastro"].call_args[0][1]["email_portal"] == "compras@empresa.com.br"
-        mocks["delete_session"].assert_called_once_with(PHONE)
-        mocks["update_session"].assert_not_called()
+        mocks["update_session"].assert_called_once_with(PHONE, "CONCLUIDO", {}, {})
+        mocks["delete_session"].assert_not_called()
 
     @pytest.mark.parametrize("texto", ["ALTERAR EMAIL", "ALTERAR E-mail", "alterar e-mail"])
     def test_A_alterar_email(self, manager, mocks, texto):

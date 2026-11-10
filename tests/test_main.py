@@ -99,9 +99,10 @@ class TestWebhookIgnorados:
     def test_B_mensagem_midia_envia_aviso_texto(self, client, mock_manager, mock_send):
         resp = client.post("/webhook", data=_form_midia())
         assert resp.status_code == 200
-        mock_send.assert_called_once()
-        assert "texto" in mock_send.call_args[0][1].lower()
+        # A mídia vai para o bot, que avisa e repete a pergunta atual.
+        mock_manager.process_midia.assert_called_once()
         mock_manager.process.assert_not_called()
+        mock_send.assert_called_once()
 
     def test_B_body_vazio_sem_midia_ignorado(self, client, mock_manager, mock_send):
         form = _form_texto(text="")
