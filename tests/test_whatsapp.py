@@ -86,6 +86,7 @@ class TestEnvioWhatsApp:
 # ─── Mensagens interativas (Meta) ──────────────────────────────
 
 from conversation import Resposta
+from resposta import prefixar
 import whatsapp
 
 
@@ -126,3 +127,35 @@ def test_B_interativo_recusado_cai_para_texto(meta):
 def test_A_texto_simples_continua_text(meta):
     whatsapp.send_message("5531", "olá")
     assert meta.call_args.kwargs["json"] == {"messaging_product": "whatsapp", "to": "5531", "type": "text", "text": {"body": "olá"}}
+
+
+# ─── Cartão de contato (Meta) ──────────────────────────────────
+
+CARTAO = {"name": {"formatted_name": "Equipe", "first_name": "Equipe"},
+          "phones": [{"phone": "+55 31 99999-0000", "type": "WORK", "wa_id": "553199990000"}]}
+
+
+def test_A_cartao_vai_antes_do_texto(meta):
+    send_message("5531", Resposta("Fale com a equipe.", cartao=CARTAO))
+    primeiro, segundo = [c.kwargs["json"] for c in meta.call_args_list]
+    assert primeiro["type"] == "contacts" and primeiro["contacts"] == [CARTAO]
+    assert segundo["type"] == "text" and segundo["text"]["body"] == "Fale com a equipe."
+
+
+def test_A_cartao_com_botoes(meta):
+    send_message("5531", Resposta("Fale com a equipe.", botoes=[("X", "Não sou fornecedor")], cartao=CARTAO))
+    tipos = [c.kwargs["json"]["type"] for c in meta.call_args_list]
+    assert tipos == ["contacts", "interactive"]
+
+
+def test_B_cartao_recusado_ainda_manda_o_texto(meta):
+    meta.side_effect = [MagicMock(ok=False, status_code=400, text="erro"), MagicMock(ok=True)]
+    assert send_message("5531", Resposta("Fale com a equipe.", cartao=CARTAO)) is True
+    assert meta.call_args.kwargs["json"]["type"] == "text"
+
+
+def test_A_cartao_passa_adiante_ao_ganhar_prefixo_ou_botoes():
+    r = prefixar("Olá", Resposta("Fale com a equipe.", cartao=CARTAO))
+    assert r.cartao == CARTAO
+    assert Resposta(r, botoes=[("S", "Sim")]).cartao == CARTAO
+    assert Resposta("sem cartão").cartao is None

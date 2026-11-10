@@ -236,3 +236,37 @@ class TestRevisao721e3fe:
         assert _cpf_valido("12345678909")
         assert not _cpf_valido("31999990000")
         assert not _cpf_valido("11111111111")
+
+
+class TestCartaoDeContato:
+    from conversation import CARTAO_EQUIPE as CARTAO
+
+    @pytest.mark.parametrize("state,texto", [
+        ("AGUARDA_cnpj", "ATENDENTE"),
+        ("AGUARDA_cnpj", "prefiro falar com uma pessoa"),
+        ("AGUARDA_cnpj", "quanto tempo demora?"),
+        ("AGUARDA_cnpj", "não tenho CNPJ"),
+        ("SAUDACAO", "atendente"),
+    ])
+    def test_respostas_com_a_equipe_levam_o_cartao(self, manager, mocks, state, texto):
+        _em(mocks, state)
+        assert manager.process(PHONE, texto).cartao == self.CARTAO
+
+    def test_terceiro_erro_leva_o_cartao(self, manager, mocks):
+        _em(mocks, "AGUARDA_cnpj", {}, {"cnpj": 2})
+        assert manager.process(PHONE, "123").cartao == self.CARTAO
+
+    def test_atendente_no_resumo_mantem_os_botoes(self, manager, mocks):
+        dados = {"cnpj": "x", "razao_social": "X", "email_portal": "a@b.com", "servico": "Y", "estados": "MG"}
+        _em(mocks, "CONFIRMACAO", dados)
+        resp = manager.process(PHONE, "atendente")
+        assert resp.cartao == self.CARTAO and resp.botoes
+
+    @pytest.mark.parametrize("state,texto", [("AGUARDA_cnpj", "123"), ("CONCLUIDO", "obrigado")])
+    def test_demais_respostas_sem_cartao(self, manager, mocks, state, texto):
+        _em(mocks, state)
+        assert getattr(manager.process(PHONE, texto), "cartao", None) is None
+
+    def test_wa_id_e_telefone_do_cartao(self):
+        fone = self.CARTAO["phones"][0]
+        assert fone["wa_id"] == "553197581137" and "99758-1137" in fone["phone"]

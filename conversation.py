@@ -38,6 +38,14 @@ MAX_TENTATIVAS = 3
 
 # Contato da equipe para quem precisa falar com uma pessoa, e página para quem não é fornecedor.
 CONTATO_EQUIPE = "(31) 99758-1137"
+# Cartão de contato (Meta) enviado junto das mensagens que oferecem a equipe. O wa_id é o número
+# como o WhatsApp o registrou — esta conta é de antes do 9º dígito, por isso sem o 9.
+CARTAO_EQUIPE = {
+    "name": {"formatted_name": "Mateus - Suprimentos Direcional", "first_name": "Mateus",
+             "last_name": "Suprimentos Direcional"},
+    "org": {"company": "Direcional Engenharia", "department": "Suprimentos"},
+    "phones": [{"phone": "+55 31 99758-1137", "type": "WORK", "wa_id": "553197581137"}],
+}
 URL_CONTATO_DIRECIONAL = "https://www.direcional.com.br/contato-direcional/"
 
 # Mensagem de "oi"/"tudo bem?" que chega logo depois da resposta do bot (o fornecedor escreveu
@@ -496,6 +504,12 @@ def _repetir(state: str, dados: dict, perguntas: list[dict]) -> str:
     return _pergunta(perguntas[0])
 
 
+def _com_cartao(resposta) -> Resposta:
+    """Junta o cartão de contato da equipe à resposta: o fornecedor salva ou abre a conversa com um toque."""
+    return Resposta(resposta, botoes=getattr(resposta, "botoes", None), lista=getattr(resposta, "lista", None),
+                    lista_botao=getattr(resposta, "lista_botao", "Escolher"), cartao=CARTAO_EQUIPE)
+
+
 def _com_botoes_do_resumo(resposta):
     # Toda resposta que traz o resumo pede confirmação: vai com os botões.
     if resposta and _RESUMO_TITULO in resposta and not getattr(resposta, "botoes", None):
@@ -595,9 +609,11 @@ class ConversationManager:
                 # o aviso de privacidade), para que um CNPJ enviado em seguida valha como resposta.
                 update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
                 resp = _com(f"{MSGS['ATENDENTE']}\n\n{MSGS['SAUDACAO']}", primeira)
-                return resp if resp.botoes or resp.lista else Resposta(resp, botoes=[BOTAO_NAO_FORNECEDOR])
+                if not resp.botoes and not resp.lista:
+                    resp = Resposta(resp, botoes=[BOTAO_NAO_FORNECEDOR])
+                return _com_cartao(resp)
             update_session(phone, state, dados, tentativas)
-            return prefixar(MSGS["ATENDENTE"], _repetir(state, dados, perguntas))
+            return _com_cartao(prefixar(MSGS["ATENDENTE"], _repetir(state, dados, perguntas)))
 
         if intencao == "AJUDA" and state == "SAUDACAO":
             update_session(phone, f"AGUARDA_{primeira['campo']}", dados, tentativas)
@@ -668,7 +684,7 @@ class ConversationManager:
 
             # Uma pergunta ("o que é razão social?") não é resposta, nem num campo de texto livre.
             if tipo.lower() == "texto" and text.strip().endswith("?"):
-                return sem_contar(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg))
+                return sem_contar(_com_cartao(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)))
 
             valor = _validar(text, tipo)
 
@@ -679,11 +695,11 @@ class ConversationManager:
                                            pergunta_cfg))
                 if tipo.lower() == "cnpj" and (_contem(text, _PALAVRAS_SEM_CNPJ)
                                        or _cpf_valido(re.sub(r"\D", "", text))):
-                    return sem_contar(MSGS["SEM_CNPJ"])
+                    return sem_contar(_com_cartao(MSGS["SEM_CNPJ"]))
                 if _contem(text, _PALAVRAS_ATENDENTE):
-                    return sem_contar(_com(MSGS["ATENDENTE"], pergunta_cfg))
+                    return sem_contar(_com_cartao(_com(MSGS["ATENDENTE"], pergunta_cfg)))
                 if text.strip().endswith("?"):
-                    return sem_contar(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg))
+                    return sem_contar(_com_cartao(_com(MSGS["PERGUNTA_LIVRE"], pergunta_cfg)))
 
                 n = tentativas.get(campo, 0) + 1
                 tentativas[campo] = n
@@ -698,7 +714,8 @@ class ConversationManager:
                     # Não apaga o que já foi respondido: zera a contagem e oferece a equipe.
                     tentativas.pop(campo, None)
                     update_session(phone, state, dados, tentativas)
-                    return _com(f"{MSGS['MAX_TENTATIVAS']}\n\nDica: {_mensagem_ajuda(tipo)}", pergunta_cfg)
+                    return _com_cartao(_com(f"{MSGS['MAX_TENTATIVAS']}\n\nDica: {_mensagem_ajuda(tipo)}",
+                                            pergunta_cfg))
                 update_session(phone, state, dados, tentativas)
                 opcoes = _MENUS.get(tipo.lower())
                 escolhidos, invalidos = escolher(text, SERVICOS) if opcoes is SERVICOS else ([], [])

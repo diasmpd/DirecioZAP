@@ -5,13 +5,16 @@ class Resposta(str):
     quem envia (whatsapp.py) usa `botoes` (até 3, título até 20 caracteres) ou `lista`
     (até 10 itens) quando o provedor suporta, e cai no texto puro quando não.
     O id de um botão/item volta no webhook como se o fornecedor tivesse digitado aquele texto.
+    `cartao` (opcional) é um cartão de contato no formato da Meta, enviado antes do texto; ele
+    passa adiante quando uma Resposta é embrulhada em outra (ex: para ganhar botões).
     """
 
-    def __new__(cls, texto: str, botoes=None, lista=None, lista_botao: str = "Escolher"):
+    def __new__(cls, texto: str, botoes=None, lista=None, lista_botao: str = "Escolher", cartao=None):
         obj = super().__new__(cls, texto)
         obj.botoes = botoes or []          # [(id, título)]
         obj.lista = lista or []            # [(id, título)]
         obj.lista_botao = lista_botao
+        obj.cartao = cartao if cartao is not None else getattr(texto, "cartao", None)
         return obj
 
 
@@ -24,4 +27,5 @@ def prefixar(prefixo: str, resposta: str) -> "Resposta":
         botoes=getattr(resposta, "botoes", None),
         lista=getattr(resposta, "lista", None),
         lista_botao=getattr(resposta, "lista_botao", "Escolher"),
+        cartao=getattr(resposta, "cartao", None),
     )

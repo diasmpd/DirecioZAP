@@ -89,6 +89,10 @@ def _post_meta(phone: str, payload: dict) -> bool:
 
 
 def _send_via_meta(phone: str, text: str) -> bool:
+    cartao = getattr(text, "cartao", None)
+    if cartao and not _post_meta(phone, {"type": "contacts", "contacts": [cartao]}):
+        # O número também está no texto: sem o cartão, o fornecedor ainda tem o contato.
+        log.warning("Cartão de contato recusado para %s; seguindo só com o texto.", mascarar(phone))
     interativo = _interativo(text)
     if not interativo:
         return _post_meta(phone, {"type": "text", "text": {"body": str(text)}})
